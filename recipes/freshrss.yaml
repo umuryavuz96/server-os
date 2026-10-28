@@ -1,0 +1,27 @@
+id: freshrss
+name: FreshRSS
+description: Fast, self-hosted RSS and Atom feed reader with multi-user support and mobile apps.
+category: Feed Readers
+website: https://freshrss.org
+repo: https://github.com/FreshRSS/FreshRSS
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/freshrss.svg
+setup: |
+  Install and make the owner without the web wizard (FreshRSS CLI, run as www-data in /var/www/FreshRSS):
+    docker exec -u www-data sd-freshrss ./cli/do-install.php --default-user <owner> --auth-type form --base-url <the app's address> --db-type sqlite
+    docker exec -u www-data sd-freshrss ./cli/create-user.php --user <owner> --password <admin_password>
+  Check: the address shows the login form, not the install page.
+docker:
+  compose: |
+    services:
+      freshrss:
+        image: freshrss/freshrss:latest
+        container_name: sd-freshrss
+        restart: unless-stopped
+        environment:
+          TZ: "{{tz}}"
+          CRON_MIN: "*/20"
+        ports:
+          - "{{port:8094}}:80"
+        volumes:
+          - "{{data}}/data:/var/www/FreshRSS/data"
+          - "{{data}}/extensions:/var/www/FreshRSS/extensions"

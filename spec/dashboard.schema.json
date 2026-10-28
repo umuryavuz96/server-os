@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://serveros.dev/schema/dashboard.json",
+  "title": "Server OS dashboard",
+  "description": "A dashboard is a grid of cards. The panel renders it on a 12-column grid (one column on phones, in y/x order); the apps use the same file.",
+  "type": "object",
+  "required": [
+    "title",
+    "cards"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,47}$",
+      "description": "File name without .json; set by the server."
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "refresh": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 3600,
+      "default": 60,
+      "description": "Seconds between refreshes of history-based cards; live cards follow the stream."
+    },
+    "cards": {
+      "type": "array",
+      "maxItems": 60,
+      "items": {
+        "$ref": "#/$defs/card"
+      }
+    }
+  },
+  "$defs": {
+    "card": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "type": {
+          "enum": [
+            "metric",
+            "stat",
+            "bar",
+            "gauge",
+            "apps",
+            "jobs",
+            "bots",
+            "logs",
+            "claude",
+            "text"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "x": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 11
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "w": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "h": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12,
+          "description": "Rows of 72 px."
+        },
+        "design": {
+          "type": "string",
+          "description": "Variant per type \u2014 metric: hero | line | area; stat: tile | big; gauge: ring | bar; apps: list | grid; jobs: list | timeline; bots: list; logs: stream; claude: usage | jobs; text: plain | note."
+        },
+        "query": {
+          "$ref": "#/$defs/query"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 4000,
+          "description": "text cards: Markdown (headings, bold, links, lists)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "query": {
+      "type": "object",
+      "description": "What the card shows. metric/bar: metric + range (+ points); stat/gauge: metric (current value) or value (a state path); apps/jobs/bots/logs: filter + sort + limit.",
+      "properties": {
+        "metric": {
+          "enum": [
+            "cpu",
+            "ram",
+            "swap",
+            "load",
+            "disk",
+            "net"
+          ]
+        },
+        "range": {
+          "enum": [
+            "1h",
+            "2h",
+            "6h",
+            "24h",
+            "7d",
+            "30d",
+            "90d"
+          ]
+        },
+        "points": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 400
+        },
+        "value": {
+          "type": "string",
+          "description": "Dotted path into the live state, e.g. system.ramUsedGB or dns.unboundHitRate."
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 12
+        },
+        "max": {
+          "type": "number",
+          "description": "gauge: the full-scale value."
+        },
+        "warn": {
+          "type": "number"
+        },
+        "bad": {
+          "type": "number"
+        },
+        "filter": {
+          "type": "string",
+          "description": "apps: on | off | all | <group>; jobs: next | failing | all; logs: debug | info | warn | error; bots: running | all."
+        },
+        "sort": {
+          "type": "string",
+          "description": "apps: mem | name | uptime; jobs: next | last | name."
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

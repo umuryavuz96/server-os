@@ -1,0 +1,1704 @@
+{
+ "$comment": "Trimmed from https://json.schemastore.org/claude-code-settings.json (2026-10-27) for tests: property names, additionalProperties:false, enums and the permission-rule pattern. permissions.blockReadsOutsideWorkingDirectories is added from code.claude.com/docs/en/settings-reference (v2.1.257+), which the schemastore copy lacks.",
+ "properties": {
+  "$schema": {},
+  "apiKeyHelper": {},
+  "autoMemoryEnabled": {},
+  "autoUpdatesChannel": {
+   "enum": [
+    "stable",
+    "latest"
+   ]
+  },
+  "awsCredentialExport": {},
+  "awsAuthRefresh": {},
+  "claudeMdExcludes": {},
+  "cleanupPeriodDays": {},
+  "env": {
+   "properties": {
+    "ANTHROPIC_API_KEY": {},
+    "ANTHROPIC_AUTH_TOKEN": {},
+    "ANTHROPIC_AWS_API_KEY": {},
+    "ANTHROPIC_AWS_BASE_URL": {},
+    "ANTHROPIC_AWS_WORKSPACE_ID": {},
+    "ANTHROPIC_BASE_URL": {},
+    "ANTHROPIC_BEDROCK_BASE_URL": {},
+    "ANTHROPIC_BEDROCK_MANTLE_BASE_URL": {},
+    "ANTHROPIC_BEDROCK_SERVICE_TIER": {
+     "enum": [
+      "default",
+      "flex",
+      "priority"
+     ]
+    },
+    "ANTHROPIC_BETAS": {},
+    "ANTHROPIC_CUSTOM_HEADERS": {},
+    "ANTHROPIC_CUSTOM_MODEL_OPTION": {},
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION": {},
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": {},
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_SUPPORTED_CAPABILITIES": {},
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": {},
+    "ANTHROPIC_DEFAULT_FABLE_MODEL_DESCRIPTION": {},
+    "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME": {},
+    "ANTHROPIC_DEFAULT_FABLE_MODEL_SUPPORTED_CAPABILITIES": {},
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": {},
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION": {},
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": {},
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES": {},
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": {},
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION": {},
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": {},
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES": {},
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": {},
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION": {},
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": {},
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES": {},
+    "ANTHROPIC_FOUNDRY_API_KEY": {},
+    "ANTHROPIC_FOUNDRY_AUTH_TOKEN": {},
+    "ANTHROPIC_FOUNDRY_BASE_URL": {},
+    "ANTHROPIC_FOUNDRY_RESOURCE": {},
+    "ANTHROPIC_MODEL": {},
+    "ANTHROPIC_SMALL_FAST_MODEL": {},
+    "ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION": {},
+    "ANTHROPIC_VERTEX_BASE_URL": {},
+    "ANTHROPIC_VERTEX_PROJECT_ID": {},
+    "ANTHROPIC_WORKSPACE_ID": {},
+    "API_FORCE_IDLE_TIMEOUT": {},
+    "API_TIMEOUT_MS": {},
+    "AWS_BEARER_TOKEN_BEDROCK": {},
+    "AWS_REGION": {},
+    "BASH_DEFAULT_TIMEOUT_MS": {},
+    "BASH_MAX_OUTPUT_LENGTH": {},
+    "BASH_MAX_TIMEOUT_MS": {},
+    "BETA_TRACING_ENDPOINT": {},
+    "CCR_FORCE_BUNDLE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDECODE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_AFK_COUNTDOWN_MS": {},
+    "CLAUDE_AFK_TIMEOUT_MS": {},
+    "CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_AGENT_SDK_MCP_NO_PREFIX": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS": {},
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": {},
+    "CLAUDE_AUTO_BACKGROUND_TASKS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_AX_SCREEN_READER": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CLIENT_PRESENCE_FILE": {},
+    "CLAUDE_CODE_ACCESSIBILITY": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ALT_SCREEN_FULL_REPAINT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_API_KEY_HELPER_TTL_MS": {},
+    "CLAUDE_CODE_ARTIFACT_AUTO_OPEN": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": {},
+    "CLAUDE_CODE_AUTO_CONNECT_IDE": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "CLAUDE_CODE_AWS_CHAIN_RESOLVE_TIMEOUT_MS": {},
+    "CLAUDE_CODE_BRIDGE_SESSION_ID": {},
+    "CLAUDE_CODE_CERT_STORE": {},
+    "CLAUDE_CODE_CHILD_SESSION": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_CLIENT_CERT": {},
+    "CLAUDE_CODE_CLIENT_KEY": {},
+    "CLAUDE_CODE_CLIENT_KEY_PASSPHRASE": {},
+    "CLAUDE_CODE_DEBUG_LOGS_DIR": {},
+    "CLAUDE_CODE_DEBUG_LOG_LEVEL": {
+     "enum": [
+      "verbose",
+      "debug",
+      "info",
+      "warn",
+      "error"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_1M_CONTEXT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_ADVISOR_TOOL": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_AGENT_VIEW": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_ARTIFACT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_ATTACHMENTS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_BEDROCK_CONTENT_TYPE_GUARD": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_BG_EXIT_HANDOFF": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_BUNDLED_SKILLS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_CLAUDE_MDS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_CRON": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_FAST_MODE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_MOUSE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_MOUSE_CLICKS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_NOTIFICATION_PRESENCE_CHECK": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_POLICY_SKILLS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_THINKING": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_VIRTUAL_SCROLL": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_DISABLE_WORKFLOWS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_EFFORT_LEVEL": {
+     "enum": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "auto"
+     ]
+    },
+    "CLAUDE_CODE_ENABLE_APPEND_SUBAGENT_PROMPT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ENABLE_AUTO_MODE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ENABLE_BACKGROUND_PLUGIN_REFRESH": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ENABLE_FEEDBACK_SURVEY_FOR_OTEL": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING": {},
+    "CLAUDE_CODE_ENABLE_TASKS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ENABLE_TELEMETRY": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_EXIT_AFTER_STOP_DELAY": {},
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_EXTRA_BODY": {},
+    "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": {},
+    "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_FORCE_STRIKETHROUGH": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_FORCE_SYNC_OUTPUT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_FORK_SUBAGENT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_FORWARD_SUBAGENT_TEXT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_GIT_BASH_PATH": {},
+    "CLAUDE_CODE_GLOB_HIDDEN": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "CLAUDE_CODE_GLOB_NO_IGNORE": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "CLAUDE_CODE_GLOB_TIMEOUT_SECONDS": {},
+    "CLAUDE_CODE_HIDE_CWD": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_IDE_HOST_OVERRIDE": {},
+    "CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_IDE_SKIP_VALID_CHECK": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": {},
+    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": {},
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": {},
+    "CLAUDE_CODE_MAX_RETRIES": {},
+    "CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION": {},
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": {},
+    "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY": {},
+    "CLAUDE_CODE_MAX_TURNS": {},
+    "CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION": {},
+    "CLAUDE_CODE_MCP_ALLOWLIST_ENV": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS": {},
+    "CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT": {},
+    "CLAUDE_CODE_NATIVE_CURSOR": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_NEW_INIT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_NO_FLICKER": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": {},
+    "CLAUDE_CODE_OAUTH_SCOPES": {},
+    "CLAUDE_CODE_OAUTH_TOKEN": {},
+    "CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH": {},
+    "CLAUDE_CODE_OTEL_DIAG_STDERR": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_OTEL_FLUSH_TIMEOUT_MS": {},
+    "CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS": {},
+    "CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS": {},
+    "CLAUDE_CODE_PACKAGE_MANAGER_AUTO_UPDATE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_PERFORCE_MODE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_PLUGIN_CACHE_DIR": {},
+    "CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS": {},
+    "CLAUDE_CODE_PLUGIN_KEEP_MARKETPLACE_ON_FAILURE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_PLUGIN_PREFER_HTTPS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_PLUGIN_SEED_DIR": {},
+    "CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS": {},
+    "CLAUDE_CODE_PROCESS_WRAPPER": {},
+    "CLAUDE_CODE_PROPAGATE_TRACEPARENT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_PROXY_RESOLVES_HOSTS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_REMOTE": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "CLAUDE_CODE_REMOTE_SESSION_ID": {},
+    "CLAUDE_CODE_RESUME_INTERRUPTED_TURN": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_RESUME_INTERRUPTED_TURN_MAX_AGE_MS": {},
+    "CLAUDE_CODE_RESUME_PROMPT": {},
+    "CLAUDE_CODE_RETRY_WATCHDOG": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SAFE_MODE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SCRIPT_CAPS": {},
+    "CLAUDE_CODE_SCROLL_SPEED": {},
+    "CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS": {},
+    "CLAUDE_CODE_SESSION_ID": {},
+    "CLAUDE_CODE_SHELL": {},
+    "CLAUDE_CODE_SHELL_PREFIX": {},
+    "CLAUDE_CODE_SIMPLE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SKIP_ANTHROPIC_AWS_AUTH": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SKIP_AWS_CRED_CACHE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SKIP_BEDROCK_AUTH": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SKIP_FOUNDRY_AUTH": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SKIP_MANTLE_AUTH": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SKIP_PROMPT_HISTORY": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SKIP_VERTEX_AUTH": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP": {},
+    "CLAUDE_CODE_SUBAGENT_MODEL": {},
+    "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SYNC_PLUGIN_INSTALL": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SYNC_PLUGIN_INSTALL_TIMEOUT_MS": {},
+    "CLAUDE_CODE_SYNC_SKILLS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_SYNC_SKILLS_INSTALL_TIMEOUT_MS": {},
+    "CLAUDE_CODE_SYNC_SKILLS_WAIT_TIMEOUT_MS": {},
+    "CLAUDE_CODE_SYNTAX_HIGHLIGHT": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "CLAUDE_CODE_TASK_LIST_ID": {},
+    "CLAUDE_CODE_TEAM_NAME": {},
+    "CLAUDE_CODE_TEAM_TEARDOWN_PARK_TIMEOUT_MS": {},
+    "CLAUDE_CODE_TMPDIR": {},
+    "CLAUDE_CODE_TMUX_TRUECOLOR": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_USE_ANTHROPIC_AWS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_USE_BEDROCK": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_USE_FOUNDRY": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_USE_MANTLE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_USE_NATIVE_FILE_SEARCH": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_USE_POWERSHELL_TOOL": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CODE_USE_VERTEX": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_CONFIG_DIR": {},
+    "CLAUDE_DISABLE_ADOPT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_EFFORT": {
+     "enum": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ]
+    },
+    "CLAUDE_ENABLE_BYTE_WATCHDOG": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_ENABLE_BYTE_WATCHDOG_BEDROCK": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_ENABLE_STREAM_WATCHDOG": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "CLAUDE_ENV_FILE": {},
+    "CLAUDE_PID": {},
+    "CLAUDE_PROJECT_DIR": {},
+    "CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX": {},
+    "CLAUDE_STREAM_IDLE_TIMEOUT_MS": {},
+    "CLOUD_ML_REGION": {},
+    "DEBUG": {},
+    "DISABLE_AUTOUPDATER": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_AUTO_COMPACT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_COMPACT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_COST_WARNINGS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_DOCTOR_COMMAND": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_ERROR_REPORTING": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_EXTRA_USAGE_COMMAND": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_FEEDBACK_COMMAND": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_GROWTHBOOK": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_INSTALLATION_CHECKS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_INSTALL_GITHUB_APP_COMMAND": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_INTERLEAVED_THINKING": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_LOGIN_COMMAND": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_LOGOUT_COMMAND": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_PROMPT_CACHING": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_PROMPT_CACHING_FABLE": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_PROMPT_CACHING_HAIKU": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_PROMPT_CACHING_OPUS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_PROMPT_CACHING_SONNET": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_TELEMETRY": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_UPDATES": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DISABLE_UPGRADE_COMMAND": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "DO_NOT_TRACK": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "ENABLE_BETA_TRACING_DETAILED": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "ENABLE_CLAUDEAI_MCP_SERVERS": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "ENABLE_PROMPT_CACHING_1H": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "ENABLE_TOOL_SEARCH": {},
+    "FALLBACK_FOR_ALL_PRIMARY_MODELS": {},
+    "FORCE_AUTOUPDATE_PLUGINS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "FORCE_HYPERLINK": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "FORCE_PROMPT_CACHING_5M": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "GOOGLE_APPLICATION_CREDENTIALS": {},
+    "HTTPS_PROXY": {},
+    "HTTP_PROXY": {},
+    "IS_DEMO": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "MAX_MCP_OUTPUT_TOKENS": {},
+    "MAX_STRUCTURED_OUTPUT_RETRIES": {},
+    "MAX_THINKING_TOKENS": {},
+    "MCP_CLIENT_SECRET": {},
+    "MCP_CONNECTION_NONBLOCKING": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "MCP_CONNECT_TIMEOUT_MS": {},
+    "MCP_OAUTH_CALLBACK_PORT": {},
+    "MCP_REMOTE_SERVER_CONNECTION_BATCH_SIZE": {},
+    "MCP_SERVER_CONNECTION_BATCH_SIZE": {},
+    "MCP_TIMEOUT": {},
+    "MCP_TOOL_TIMEOUT": {},
+    "NODE_EXTRA_CA_CERTS": {},
+    "NO_PROXY": {},
+    "OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT": {},
+    "OTEL_EXPORTER_OTLP_CERTIFICATE": {},
+    "OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE": {},
+    "OTEL_EXPORTER_OTLP_CLIENT_KEY": {},
+    "OTEL_EXPORTER_OTLP_ENDPOINT": {},
+    "OTEL_EXPORTER_OTLP_HEADERS": {},
+    "OTEL_EXPORTER_OTLP_LOGS_CLIENT_CERTIFICATE": {},
+    "OTEL_EXPORTER_OTLP_LOGS_CLIENT_KEY": {},
+    "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": {},
+    "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL": {
+     "enum": [
+      "grpc",
+      "http/json",
+      "http/protobuf"
+     ]
+    },
+    "OTEL_EXPORTER_OTLP_METRICS_CLIENT_CERTIFICATE": {},
+    "OTEL_EXPORTER_OTLP_METRICS_CLIENT_KEY": {},
+    "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": {},
+    "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL": {
+     "enum": [
+      "grpc",
+      "http/json",
+      "http/protobuf"
+     ]
+    },
+    "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": {
+     "enum": [
+      "delta",
+      "cumulative"
+     ]
+    },
+    "OTEL_EXPORTER_OTLP_PROTOCOL": {
+     "enum": [
+      "grpc",
+      "http/json",
+      "http/protobuf"
+     ]
+    },
+    "OTEL_EXPORTER_OTLP_TRACES_CLIENT_CERTIFICATE": {},
+    "OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY": {},
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": {},
+    "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": {
+     "enum": [
+      "grpc",
+      "http/json",
+      "http/protobuf"
+     ]
+    },
+    "OTEL_LOGS_EXPORTER": {},
+    "OTEL_LOGS_EXPORT_INTERVAL": {},
+    "OTEL_LOG_ASSISTANT_RESPONSES": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "OTEL_LOG_RAW_API_BODIES": {},
+    "OTEL_LOG_TOOL_CONTENT": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "OTEL_LOG_TOOL_DETAILS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "OTEL_LOG_USER_PROMPTS": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "OTEL_METRICS_EXPORTER": {},
+    "OTEL_METRICS_INCLUDE_ACCOUNT_UUID": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "OTEL_METRICS_INCLUDE_ENTRYPOINT": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "OTEL_METRICS_INCLUDE_SESSION_ID": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "OTEL_METRICS_INCLUDE_VERSION": {
+     "enum": [
+      "true",
+      "false"
+     ]
+    },
+    "OTEL_METRIC_EXPORT_INTERVAL": {},
+    "OTEL_RESOURCE_ATTRIBUTES": {},
+    "OTEL_TRACES_EXPORTER": {},
+    "OTEL_TRACES_EXPORT_INTERVAL": {},
+    "SLASH_COMMAND_TOOL_CHAR_BUDGET": {},
+    "TASK_MAX_OUTPUT_LENGTH": {},
+    "USE_BUILTIN_RIPGREP": {
+     "enum": [
+      "0",
+      "1"
+     ]
+    },
+    "VERTEX_REGION_CLAUDE_3_5_HAIKU": {},
+    "VERTEX_REGION_CLAUDE_3_5_SONNET": {},
+    "VERTEX_REGION_CLAUDE_3_7_SONNET": {},
+    "VERTEX_REGION_CLAUDE_4_0_OPUS": {},
+    "VERTEX_REGION_CLAUDE_4_0_SONNET": {},
+    "VERTEX_REGION_CLAUDE_4_1_OPUS": {},
+    "VERTEX_REGION_CLAUDE_4_5_OPUS": {},
+    "VERTEX_REGION_CLAUDE_4_5_SONNET": {},
+    "VERTEX_REGION_CLAUDE_4_6_OPUS": {},
+    "VERTEX_REGION_CLAUDE_4_6_SONNET": {},
+    "VERTEX_REGION_CLAUDE_4_7_OPUS": {},
+    "VERTEX_REGION_CLAUDE_4_8_OPUS": {},
+    "VERTEX_REGION_CLAUDE_5_OPUS": {},
+    "VERTEX_REGION_CLAUDE_5_SONNET": {},
+    "VERTEX_REGION_CLAUDE_FABLE_5": {},
+    "VERTEX_REGION_CLAUDE_HAIKU_4_5": {}
+   }
+  },
+  "attribution": {
+   "properties": {
+    "commit": {},
+    "pr": {},
+    "sessionUrl": {}
+   },
+   "additionalProperties": false
+  },
+  "includeGitInstructions": {},
+  "includeCoAuthoredBy": {},
+  "plansDirectory": {},
+  "respectGitignore": {},
+  "permissions": {
+   "properties": {
+    "allow": {
+     "items": {
+      "pattern": "^((Agent|Artifact|Bash|Cd|Edit|EnterWorktree|ExitPlanMode|Glob|Grep|KillShell|LSP|Monitor|MultiEdit|NotebookEdit|PowerShell|Read|ShareOnboardingGuide|Skill|TaskCreate|TaskGet|TaskList|TaskOutput|TaskStop|TaskUpdate|TodoWrite|ToolSearch|WebFetch|WebSearch|Workflow|Write)(\\([^)]+\\))?|mcp__.*)$"
+     }
+    },
+    "deny": {
+     "items": {
+      "pattern": "^((Agent|Artifact|Bash|Cd|Edit|EnterWorktree|ExitPlanMode|Glob|Grep|KillShell|LSP|Monitor|MultiEdit|NotebookEdit|PowerShell|Read|ShareOnboardingGuide|Skill|TaskCreate|TaskGet|TaskList|TaskOutput|TaskStop|TaskUpdate|TodoWrite|ToolSearch|WebFetch|WebSearch|Workflow|Write)(\\([^)]+\\))?|mcp__.*)$"
+     }
+    },
+    "ask": {
+     "items": {
+      "pattern": "^((Agent|Artifact|Bash|Cd|Edit|EnterWorktree|ExitPlanMode|Glob|Grep|KillShell|LSP|Monitor|MultiEdit|NotebookEdit|PowerShell|Read|ShareOnboardingGuide|Skill|TaskCreate|TaskGet|TaskList|TaskOutput|TaskStop|TaskUpdate|TodoWrite|ToolSearch|WebFetch|WebSearch|Workflow|Write)(\\([^)]+\\))?|mcp__.*)$"
+     }
+    },
+    "defaultMode": {
+     "enum": [
+      "acceptEdits",
+      "bypassPermissions",
+      "default",
+      "delegate",
+      "dontAsk",
+      "plan",
+      "auto",
+      "manual"
+     ]
+    },
+    "disableBypassPermissionsMode": {
+     "enum": [
+      "disable"
+     ]
+    },
+    "disableAutoMode": {
+     "enum": [
+      "disable"
+     ]
+    },
+    "additionalDirectories": {},
+    "blockReadsOutsideWorkingDirectories": {}
+   },
+   "additionalProperties": false
+  },
+  "language": {},
+  "model": {},
+  "availableModels": {},
+  "modelOverrides": {},
+  "effortLevel": {
+   "enum": [
+    "low",
+    "medium",
+    "high",
+    "xhigh"
+   ]
+  },
+  "fastMode": {},
+  "fastModePerSessionOptIn": {},
+  "feedbackSurveyRate": {},
+  "enableAllProjectMcpServers": {},
+  "enabledMcpjsonServers": {},
+  "disabledMcpjsonServers": {},
+  "allowedMcpServers": {},
+  "deniedMcpServers": {},
+  "httpHookAllowedEnvVars": {},
+  "hooks": {
+   "properties": {
+    "PreToolUse": {},
+    "PostToolUse": {},
+    "PostToolUseFailure": {},
+    "PermissionRequest": {},
+    "Notification": {},
+    "UserPromptSubmit": {},
+    "Stop": {},
+    "StopFailure": {},
+    "SubagentStart": {},
+    "SubagentStop": {},
+    "PreCompact": {},
+    "PostCompact": {},
+    "Elicitation": {},
+    "ElicitationResult": {},
+    "TeammateIdle": {},
+    "TaskCompleted": {},
+    "Setup": {},
+    "InstructionsLoaded": {},
+    "CwdChanged": {},
+    "FileChanged": {},
+    "ConfigChange": {},
+    "WorktreeCreate": {},
+    "WorktreeRemove": {},
+    "SessionStart": {},
+    "SessionEnd": {},
+    "PostToolBatch": {},
+    "TaskCreated": {},
+    "PermissionDenied": {},
+    "UserPromptExpansion": {},
+    "MessageDisplay": {},
+    "DirectoryAdded": {}
+   },
+   "additionalProperties": false
+  },
+  "disableAllHooks": {},
+  "allowedChannelPlugins": {
+   "items": {
+    "properties": {
+     "marketplace": {},
+     "plugin": {}
+    },
+    "additionalProperties": false
+   }
+  },
+  "allowedHttpHookUrls": {},
+  "allowManagedHooksOnly": {},
+  "allowManagedPermissionRulesOnly": {},
+  "statusLine": {
+   "properties": {
+    "type": {},
+    "command": {},
+    "padding": {},
+    "refreshInterval": {},
+    "hideVimModeIndicator": {}
+   },
+   "additionalProperties": false
+  },
+  "fileSuggestion": {
+   "properties": {
+    "type": {},
+    "command": {}
+   },
+   "additionalProperties": false
+  },
+  "enabledPlugins": {},
+  "extraKnownMarketplaces": {},
+  "strictKnownMarketplaces": {},
+  "skippedMarketplaces": {},
+  "skippedPlugins": {},
+  "forceLoginMethod": {
+   "enum": [
+    "claudeai",
+    "console",
+    "gateway"
+   ]
+  },
+  "forceLoginOrgUUID": {},
+  "otelHeadersHelper": {},
+  "outputStyle": {},
+  "skipWebFetchPreflight": {},
+  "sandbox": {
+   "properties": {
+    "network": {
+     "properties": {
+      "allowUnixSockets": {},
+      "allowLocalBinding": {},
+      "httpProxyPort": {},
+      "socksProxyPort": {},
+      "allowAllUnixSockets": {},
+      "allowedDomains": {},
+      "deniedDomains": {},
+      "allowManagedDomainsOnly": {},
+      "allowMachLookup": {},
+      "tlsTerminate": {
+       "properties": {
+        "caCertPath": {},
+        "caKeyPath": {}
+       },
+       "additionalProperties": false
+      },
+      "strictAllowlist": {}
+     },
+     "additionalProperties": false
+    },
+    "ignoreViolations": {},
+    "excludedCommands": {},
+    "autoAllowBashIfSandboxed": {},
+    "enableWeakerNetworkIsolation": {},
+    "enableWeakerNestedSandbox": {},
+    "allowUnsandboxedCommands": {},
+    "enabled": {},
+    "filesystem": {
+     "properties": {
+      "allowWrite": {},
+      "denyWrite": {},
+      "denyRead": {},
+      "allowRead": {},
+      "allowManagedReadPathsOnly": {},
+      "disabled": {}
+     },
+     "additionalProperties": false
+    },
+    "ripgrep": {
+     "properties": {
+      "command": {},
+      "args": {}
+     },
+     "additionalProperties": false
+    },
+    "bwrapPath": {},
+    "socatPath": {},
+    "failIfUnavailable": {},
+    "enabledPlatforms": {},
+    "credentials": {
+     "properties": {
+      "files": {
+       "items": {
+        "properties": {
+         "path": {},
+         "mode": {
+          "enum": [
+           "deny"
+          ]
+         }
+        },
+        "additionalProperties": false
+       }
+      },
+      "envVars": {
+       "items": {
+        "properties": {
+         "name": {},
+         "mode": {
+          "enum": [
+           "deny"
+          ]
+         }
+        },
+        "additionalProperties": false
+       }
+      },
+      "allowPlaintextInject": {}
+     },
+     "additionalProperties": false
+    },
+    "allowAppleEvents": {}
+   },
+   "additionalProperties": false
+  },
+  "spinnerVerbs": {
+   "properties": {
+    "mode": {
+     "enum": [
+      "append",
+      "replace"
+     ]
+    },
+    "verbs": {}
+   },
+   "additionalProperties": false
+  },
+  "spinnerTipsEnabled": {},
+  "spinnerTipsOverride": {
+   "properties": {
+    "excludeDefault": {},
+    "tips": {}
+   },
+   "additionalProperties": false
+  },
+  "terminalProgressBarEnabled": {},
+  "showTurnDuration": {},
+  "skillOverrides": {},
+  "prefersReducedMotion": {},
+  "prUrlTemplate": {},
+  "alwaysThinkingEnabled": {},
+  "companyAnnouncements": {},
+  "teammateMode": {
+   "enum": [
+    "auto",
+    "in-process",
+    "tmux",
+    "iterm2"
+   ]
+  },
+  "worktree": {
+   "properties": {
+    "sparsePaths": {},
+    "baseRef": {
+     "enum": [
+      "fresh",
+      "head"
+     ]
+    },
+    "bgIsolation": {
+     "enum": [
+      "worktree",
+      "none"
+     ]
+    },
+    "symlinkDirectories": {}
+   },
+   "additionalProperties": false
+  },
+  "parentSettingsBehavior": {
+   "enum": [
+    "first-wins",
+    "merge"
+   ]
+  },
+  "pluginTrustMessage": {},
+  "pluginConfigs": {},
+  "allowManagedMcpServersOnly": {},
+  "blockedMarketplaces": {},
+  "agent": {},
+  "autoMemoryDirectory": {},
+  "autoMode": {
+   "properties": {
+    "allow": {},
+    "soft_deny": {},
+    "environment": {},
+    "hard_deny": {},
+    "classifyAllShell": {}
+   },
+   "additionalProperties": false
+  },
+  "channelsEnabled": {},
+  "defaultShell": {
+   "enum": [
+    "bash",
+    "powershell"
+   ]
+  },
+  "disableDeepLinkRegistration": {
+   "enum": [
+    "disable"
+   ]
+  },
+  "disableSkillShellExecution": {},
+  "forceRemoteSettingsRefresh": {},
+  "minimumVersion": {},
+  "showClearContextOnPlanAccept": {},
+  "showThinkingSummaries": {},
+  "skipDangerousModePermissionPrompt": {},
+  "strictPluginOnlyCustomization": {},
+  "tui": {
+   "enum": [
+    "fullscreen",
+    "default"
+   ]
+  },
+  "viewMode": {
+   "enum": [
+    "default",
+    "verbose",
+    "focus"
+   ]
+  },
+  "useAutoModeDuringPlan": {},
+  "voiceEnabled": {},
+  "wslInheritsWindowsSettings": {},
+  "subagentStatusLine": {
+   "properties": {
+    "type": {},
+    "command": {}
+   },
+   "additionalProperties": false
+  },
+  "advisorModel": {},
+  "autoCompactEnabled": {},
+  "disableAgentView": {},
+  "editorMode": {
+   "enum": [
+    "normal",
+    "vim"
+   ]
+  },
+  "enforceAvailableModels": {},
+  "fallbackModel": {},
+  "fileCheckpointingEnabled": {},
+  "gcpAuthRefresh": {},
+  "managedMcpServers": {},
+  "skillListingMaxDescChars": {},
+  "preferredNotifChannel": {
+   "enum": [
+    "auto",
+    "terminal_bell",
+    "iterm2",
+    "iterm2_with_bell",
+    "kitty",
+    "ghostty",
+    "notifications_disabled"
+   ]
+  },
+  "pluginSuggestionMarketplaces": {},
+  "requiredMaximumVersion": {},
+  "requiredMinimumVersion": {},
+  "respondToBashCommands": {},
+  "skillListingBudgetFraction": {},
+  "sshConfigs": {
+   "items": {
+    "properties": {
+     "id": {},
+     "name": {},
+     "sshHost": {},
+     "sshPort": {},
+     "sshIdentityFile": {},
+     "startDirectory": {}
+    },
+    "additionalProperties": false
+   }
+  },
+  "sshHostAllowlist": {},
+  "theme": {},
+  "voice": {
+   "properties": {
+    "enabled": {},
+    "mode": {
+     "enum": [
+      "hold",
+      "tap"
+     ]
+    },
+    "autoSubmit": {}
+   },
+   "additionalProperties": false
+  },
+  "wheelScrollAccelerationEnabled": {},
+  "disableBundledSkills": {},
+  "awaySummaryEnabled": {},
+  "autoScrollEnabled": {},
+  "allowAllClaudeAiMcps": {},
+  "agentPushNotifEnabled": {},
+  "axScreenReader": {},
+  "claudeMd": {},
+  "disableArtifact": {},
+  "disableAutoMode": {
+   "enum": [
+    "disable"
+   ]
+  },
+  "disableClaudeAiConnectors": {},
+  "disableRemoteControl": {},
+  "disableWorkflows": {},
+  "footerLinksRegexes": {
+   "items": {
+    "properties": {
+     "type": {},
+     "pattern": {},
+     "url": {},
+     "label": {}
+    },
+    "additionalProperties": false
+   }
+  },
+  "inputNeededNotifEnabled": {},
+  "policyHelper": {
+   "properties": {
+    "path": {},
+    "timeoutMs": {},
+    "refreshIntervalMs": {}
+   },
+   "additionalProperties": false
+  },
+  "remoteControlAtStartup": {},
+  "syntaxHighlightingDisabled": {},
+  "verbose": {},
+  "workflowKeywordTriggerEnabled": {},
+  "askUserQuestionTimeout": {
+   "enum": [
+    "60s",
+    "5m",
+    "10m",
+    "never"
+   ]
+  },
+  "teammateDefaultModel": {},
+  "workflowSizeGuideline": {
+   "enum": [
+    "unrestricted",
+    "small",
+    "medium",
+    "large"
+   ]
+  },
+  "enableArtifact": {},
+  "permissionExplainerEnabled": {},
+  "diffTool": {
+   "enum": [
+    "auto",
+    "terminal"
+   ]
+  },
+  "externalEditorContext": {},
+  "autoConnectIde": {},
+  "autoInstallIdeExtension": {},
+  "emojiCompletionEnabled": {},
+  "vimInsertModeRemaps": {},
+  "processWrapper": {},
+  "forceLoginGatewayUrl": {},
+  "disableSideloadFlags": {},
+  "browserExternalPageTools": {
+   "enum": [
+    "disabled"
+   ]
+  },
+  "disableBrowserExternalNavigation": {},
+  "disableMobileSimulatorTools": {},
+  "requireCoworkFullVmSandbox": {}
+ }
+}

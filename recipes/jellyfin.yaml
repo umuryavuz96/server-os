@@ -1,0 +1,30 @@
+id: jellyfin
+name: Jellyfin
+description: Media server for your movies, shows, music and photos, with apps for TVs, phones and browsers.
+category: Media Streaming
+website: https://jellyfin.org
+repo: https://github.com/jellyfin/jellyfin
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/jellyfin.svg
+notes: Add your media folders to compose.yaml in the app's folder (volumes), then switch the app off and on.
+setup: |
+  Run the startup wizard through its API (all JSON, no auth while the wizard is open):
+    POST /Startup/Configuration {"UICulture":"en-US","MetadataCountryCode":"US","PreferredMetadataLanguage":"en"}
+    GET  /Startup/User   (loads the default user), then POST /Startup/User {"Name":"<owner>","Password":"<admin_password>"}
+    POST /Startup/RemoteAccess {"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}
+    POST /Startup/Complete
+  Check: POST /Users/AuthenticateByName {"Username":"<owner>","Pw":"…"} with header
+  Authorization: MediaBrowser Client="ServerDash", Device="agent", DeviceId="sd", Version="1" → 200.
+  Steps for the owner: add media folders (see notes), then add libraries in Dashboard → Libraries.
+docker:
+  compose: |
+    services:
+      jellyfin:
+        image: jellyfin/jellyfin:latest
+        container_name: sd-jellyfin
+        restart: unless-stopped
+        ports:
+          - "{{port:8096}}:8096"
+        volumes:
+          - "{{data}}/config:/config"
+          - "{{data}}/cache:/cache"
+          - "{{data}}/media:/media"

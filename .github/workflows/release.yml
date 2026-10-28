@@ -1,0 +1,36 @@
+name: Release
+on:
+  push: { tags: ["v*"] }
+
+permissions: { contents: write }
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-go@v5
+        with: { go-version-file: setup/go.mod }
+      - run: bun install --frozen-lockfile && bun test server && bun run build
+      # The setup wizard for every platform.
+      - run: |
+          cd setup
+          for t in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+              -o ../dist/server-os-setup-${t%/*}-${t#*/} .
+          done
+      # The server source with the web panel prebuilt (no dev dependencies needed to run it) + SHA256SUMS.
+      # Fails when package.json's version isn't the tag: the server reports that version and the updater compares it.
+      - run: scripts/release-bundle.sh "$GITHUB_REF_NAME" dist
+      # Ed25519 signature over SHA256SUMS. Installs and the self-updater refuse a release without a valid one.
+      # The private key is the SERVER_OS_SIGNING_KEY secret (base64 PEM); the public key is in server/modules/release.ts.
+      - name: Sign SHA256SUMS
+        env: { SERVER_OS_SIGNING_KEY: "${{ secrets.SERVER_OS_SIGNING_KEY }}" }
+        run: scripts/sign-release.sh dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          # v1.2.0-beta.1 and the like are prereleases: only servers on the beta channel take them.
+          prerelease: ${{ contains(github.ref_name, '-') }}

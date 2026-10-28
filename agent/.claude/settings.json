@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enableAllProjectMcpServers": true,
+  "permissions": {
+    "allow": [
+      "mcp__server-os",
+      "Read",
+      "Bash(df *)", "Bash(du *)", "Bash(docker ps *)", "Bash(docker logs *)", "Bash(docker stats --no-stream *)",
+      "Bash(brew list *)", "Bash(brew services list)", "Bash(uptime)", "Bash(top -l 1 *)", "Bash(vm_stat)",
+      "Bash(systemctl --user status *)", "Bash(journalctl --user *)", "Bash(launchctl list *)", "Bash(launchctl print *)"
+    ],
+    "ask": [
+      "mcp__server-os__set_app_power",
+      "mcp__server-os__uninstall_app",
+      "mcp__server-os__delete_job",
+      "Bash(rm *)", "Bash(docker rm *)", "Bash(docker volume rm *)", "Bash(docker system prune *)", "Bash(sudo *)"
+    ],
+    "deny": [
+      "Read(../data/admin.key)", "Read(../apps/*/.secret)", "Read(../jobs/*/.secret)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [{ "type": "command", "command": "bun run \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit.ts\"", "timeout": 10 }]
+      }
+    ]
+  }
+}

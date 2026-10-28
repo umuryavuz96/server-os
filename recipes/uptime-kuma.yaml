@@ -1,0 +1,21 @@
+id: uptime-kuma
+name: Uptime Kuma
+description: Self-hosted monitoring — uptime checks for websites, ports and services, with status pages and notifications.
+category: Monitoring
+website: https://uptime.kuma.pet
+repo: https://github.com/louislam/uptime-kuma
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/uptime-kuma.svg
+setup: |
+  The first admin is made in the browser (socket.io, no REST API), so leave it as a step:
+  "Open the address and create your admin account". Nothing else is needed.
+docker:
+  compose: |
+    services:
+      uptime-kuma:
+        image: louislam/uptime-kuma:2
+        container_name: sd-uptime-kuma
+        restart: unless-stopped
+        ports:
+          - "{{port:3001}}:3001"
+        volumes:
+          - "{{data}}:/app/data"

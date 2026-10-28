@@ -1,0 +1,1269 @@
+openapi: 3.1.0
+info:
+  title: Server OS API
+  version: 1.0.0
+  license: { name: MIT, identifier: MIT }
+  description: |
+    The contract between a Server OS server, its web panel and the iPhone/iPad apps.
+
+    - Every path lives under `/api/v1`. The same handlers also answer under the original `/svc-api`
+      prefix for one release, so older app builds keep working.
+    - Live state: one snapshot plus patches over Server-Sent Events (`/stream`). Everything else is plain JSON.
+    - Auth depends on the server's `auth` setting (see `GET /info`). With `off`, anyone who can reach the
+      server may call it (meant for Tailscale / LAN). With `token`, send a paired device's token as
+      `Authorization: Bearer <token>`, or as `?token=` for EventSource, which cannot set headers.
+    - Tracing: send a W3C `traceparent` header to join your trace. Every response carries one back.
+    - Errors from the v1-only endpoints are RFC 9457 `application/problem+json`. The older actions still
+      answer `{ ok, detail }`.
+servers:
+  - url: /api/v1
+security:
+  - {}
+  - device: []
+tags:
+  - { name: server, description: "Identity, capabilities and pairing" }
+  - { name: update, description: "Self-update from signed GitHub releases, with a health-checked rollback" }
+  - { name: live, description: Live state }
+  - { name: metrics, description: "Metric history" }
+  - { name: apps, description: "Installed apps: power, logs" }
+  - { name: jobs, description: "Scheduled jobs and their notifications" }
+  - { name: bots, description: "Claude Code bots: session feed and controls. Lifecycle runs natively (tmux sessions <prefix><bot>) or is proxied to Claude OS (integrations.claudeOS)" }
+  - { name: storage, description: "Disk usage" }
+  - { name: screen, description: "Remote screen: this Mac's Screen Sharing (VNC) over a WebSocket, for noVNC in the panel. Off unless integrations.screen.enabled." }
+  - { name: permissions, description: "macOS privacy permissions (Full Disk Access, Local Network, …): what is needed, whether it is granted, how to fix it. macOS only." }
+  - { name: discover, description: "Search and install self-hostable software" }
+  - { name: dashboards, description: "JSON dashboards" }
+  - { name: observability, description: "Logs, traces, audit" }
+
+paths:
+  /info:
+    get:
+      operationId: getInfo
+      tags: [server]
+      summary: Server name, version, auth mode and capabilities
+      description: "Always open, even with `auth: token`. Apps call it first and show only what the server supports."
+      security: [{}]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Info" } } } }
+
+  /health:
+    get:
+      operationId: getHealth
+      tags: [server]
+      summary: Liveness and the version that answers
+      description: "Always open. The self-updater's health check waits for `ok` with the new version after a restart."
+      security: [{}]
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { type: object, required: [ok, version], properties: { ok: { type: boolean }, version: { type: string }, uptimeS: { type: integer } } } } }
+
+  /update:
+    get:
+      operationId: getUpdate
+      tags: [update]
+      summary: Self-updater status
+      description: Running version, latest release on the channel (with notes), whether it can be applied here, progress and the last outcome. Also pushed live as the `update` slice.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateStatus" } } } }
+  /update/check:
+    post:
+      operationId: checkUpdate
+      tags: [update]
+      summary: Check GitHub for a new release now
+      description: Conditional on the last ETag; at most one request per 30 s, and none while GitHub's rate limit is spent.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateStatus" } } } }
+  /update/apply:
+    post:
+      operationId: applyUpdate
+      tags: [update]
+      summary: Install the latest release
+      description: "Needs the admin key or a paired device. Verifies the Ed25519 signature on SHA256SUMS and the checksum, unpacks to <home>/versions/<tag>, switches <home>/current, restarts through launchd/systemd and rolls back if /health doesn't report the new version within 45 s. Returns at once; follow progress on GET /update. Refused (409) on git checkouts, Homebrew and Docker installs."
+      responses:
+        "202": { description: Started, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateStatus" } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /update/settings:
+    put:
+      operationId: setUpdateSettings
+      tags: [update]
+      summary: Channel and automatic mode
+      description: Needs the admin key or a paired device.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { channel: { type: string, enum: [stable, beta] }, auto: { type: string, enum: ["off", notify, nightly] } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateStatus" } } } }
+        "422": { $ref: "#/components/responses/Problem" }
+
+  /pair/start:
+    post:
+      operationId: startPairing
+      tags: [server]
+      summary: Open a 5-minute pairing window
+      description: Needs the server's local admin key (what `server-os pair` uses) or an already-paired device. Returns a 6-digit code.
+      responses:
+        "200":
+          description: Pairing code
+          content: { application/json: { schema: { type: object, required: [code, expires], properties: { code: { type: string, pattern: "^[0-9]{6}$" }, expires: { $ref: "#/components/schemas/EpochMs" } } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+  /pair:
+    post:
+      operationId: pairDevice
+      tags: [server]
+      summary: Trade a pairing code for a device token
+      description: The code is single use and is cancelled after 5 wrong guesses. Store the token in the Keychain; the server keeps only its SHA-256 hash.
+      security: [{}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code], properties: { code: { type: string }, name: { type: string, examples: ["Umur's iPad"] }, platform: { type: string, examples: [ipados] } } }
+      responses:
+        "200":
+          description: Paired
+          content: { application/json: { schema: { type: object, required: [device, token], properties: { device: { $ref: "#/components/schemas/Device" }, token: { type: string } } } } }
+        "400": { $ref: "#/components/responses/Problem" }
+  /devices:
+    get:
+      operationId: listDevices
+      tags: [server]
+      summary: Paired devices
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { devices: { type: array, items: { $ref: "#/components/schemas/Device" } } } } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+  /devices/{id}:
+    delete:
+      operationId: revokeDevice
+      tags: [server]
+      summary: Revoke a device
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /stream:
+    get:
+      operationId: streamState
+      tags: [live]
+      summary: Live state over Server-Sent Events
+      description: |
+        Events:
+        - `snapshot`: the whole state (same body as `GET /state`), sent first.
+        - `slice`: `{ key, value }` replaces one top-level slice.
+        - `entry`: `{ key, id, value }` replaces one entry of a keyed slice (for example one app in `apps`).
+        - `ping`: keep-alive, at least every 15 s.
+      responses:
+        "200": { description: Event stream, content: { text/event-stream: { schema: { type: string } } } }
+  /state:
+    get:
+      operationId: getState
+      tags: [live]
+      summary: Current state snapshot
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/State" } } } }
+
+  /history:
+    get:
+      operationId: queryHistory
+      tags: [metrics]
+      summary: Metric range query
+      description: |
+        With `points`, the response is a Prometheus/Grafana-style range query. It returns fixed `step` buckets with
+        avg/min/max, and `null` where no samples fell. Clients break the line at `null` and never re-bucket.
+        `step = max(range / points, native resolution)`. The native resolution is 15 s raw, 5 min up to 7 days, and 1 h beyond. Without `points`, the raw series is returned.
+      parameters:
+        - { name: metric, in: query, required: true, schema: { type: string, enum: [cpu, ram, swap, load, disk, net] } }
+        - { name: range, in: query, schema: { type: string, enum: ["1h", "2h", "6h", "24h", "7d", "30d", "90d"], default: "24h" } }
+        - { name: points, in: query, schema: { type: integer, minimum: 10, maximum: 1000 } }
+      responses:
+        "200":
+          description: Range series (with `points`) or raw series
+          content: { application/json: { schema: { oneOf: [{ $ref: "#/components/schemas/RangeSeries" }, { $ref: "#/components/schemas/RawSeries" }] } } }
+        "400": { $ref: "#/components/responses/Legacy" }
+  /alerts:
+    get:
+      operationId: listAlerts
+      tags: [jobs]
+      summary: Notification history (sent and suppressed)
+      parameters: [{ name: days, in: query, schema: { type: integer, enum: [1, 7], default: 1 } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { type: object } } } } }
+
+  /toggle:
+    post:
+      operationId: toggleApp
+      tags: [apps]
+      summary: Switch an app on or off
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [name, on], properties: { name: { type: string }, on: { type: boolean } } } } }
+      responses:
+        "200": { $ref: "#/components/responses/Legacy" }
+        "400": { $ref: "#/components/responses/Legacy" }
+        "415": { $ref: "#/components/responses/Legacy" }
+  /logs:
+    get:
+      operationId: getAppLogs
+      tags: [apps]
+      summary: Recent log lines of an app
+      parameters: [{ name: app, in: query, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+
+  /jobs/log:
+    get:
+      operationId: getJobLog
+      tags: [jobs]
+      summary: Tail of a job's log file
+      parameters: [{ name: id, in: query, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { id: { type: string }, log: { type: string } } } } } }
+        "404": { $ref: "#/components/responses/Legacy" }
+  /jobs/run:
+    post:
+      operationId: runJob
+      tags: [jobs]
+      summary: Run a job now
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string } } } } }
+      responses:
+        "200": { $ref: "#/components/responses/Legacy" }
+        "400": { $ref: "#/components/responses/Legacy" }
+
+  /jobs:
+    get:
+      operationId: listServerJobs
+      tags: [jobs]
+      summary: Built-in jobs (server scheduler), in the same shape as the `jobs` state slice
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { jobs: { type: array, items: { $ref: "#/components/schemas/Job" } } } } } } }
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create a job
+      description: The id is derived from the name unless given. The job is written to `<home>/jobs/<id>/job.yaml`.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/JobSpec" } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/JobSpec" } } } }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+  /jobs/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,47}$" } }]
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: A job's definition
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/JobSpec" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+    put:
+      operationId: updateJob
+      tags: [jobs]
+      summary: "Update a job (partial: send only the fields that change; {\"enabled\": false} pauses it)"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/JobSpec" } } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/JobSpec" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteJob
+      tags: [jobs]
+      summary: Delete a job and its run history
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Problem" }
+  /jobs/{id}/run:
+    post:
+      operationId: runServerJob
+      tags: [jobs]
+      summary: Run a job now
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "202": { description: Started, content: { application/json: { schema: { type: object, properties: { runId: { type: integer }, trace_id: { type: string } } } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /jobs/{id}/runs:
+    get:
+      operationId: listRuns
+      tags: [jobs]
+      summary: Recent runs, newest first (the server keeps 200 per job)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 200 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { runs: { type: array, items: { $ref: "#/components/schemas/Run" } } } } } } }
+  /runs/{run}:
+    get:
+      operationId: getRun
+      tags: [jobs]
+      summary: One run with its output
+      parameters: [{ name: run, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Run" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /jobs/{id}/webhook:
+    get:
+      operationId: getJobWebhook
+      tags: [jobs]
+      summary: "The webhook URL and secret of a job with `webhook: true`"
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { url: { type: string }, secret: { type: string }, header: { type: string, const: X-Server-OS-Secret } } } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /hooks/{id}:
+    post:
+      operationId: triggerWebhook
+      tags: [jobs]
+      summary: Start a job from outside (webhook)
+      description: Authenticated by the job's own secret, not a device token. The request body (≤ 256 KB) reaches the job as stdin and `$SD_PAYLOAD`. A wrong secret answers 404.
+      security: [{}]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-Server-OS-Secret, in: header, schema: { type: string } }
+        - { name: secret, in: query, schema: { type: string } }
+      requestBody: { content: { "*/*": { schema: { type: string } } } }
+      responses:
+        "202": { description: Started, content: { application/json: { schema: { type: object, properties: { runId: { type: integer }, trace_id: { type: string } } } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+
+  /catalog:
+    get:
+      operationId: searchCatalog
+      tags: [discover]
+      summary: Search self-hostable software (awesome-selfhosted, CasaOS, LinuxServer, Homebrew, recipes)
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: genre, in: query, schema: { type: string }, description: "a genre id from /catalog/genres" }
+        - { name: tier, in: query, schema: { type: string, enum: [ready, oneclick, agent] } }
+        - { name: fresh, in: query, schema: { type: boolean }, description: "hide stale (no update in 18 months) and archived apps" }
+        - { name: installable, in: query, schema: { type: boolean } }
+        - { name: scope, in: query, schema: { type: string, enum: [selfhosted, all], default: selfhosted }, description: "all also returns Homebrew-only entries (Mac apps, CLI services)" }
+        - { name: sort, in: query, schema: { type: string, enum: [relevance, stars, updated, name] } }
+        - { name: limit, in: query, schema: { type: integer, default: 30, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { total: { type: integer }, items: { type: array, items: { $ref: "#/components/schemas/CatalogItem" } }, facets: { type: object, description: "tiers (counts per tier with the other filters), categories (counts), hidden (apps the fresh filter hides)" } } } } } }
+  /catalog/categories:
+    get:
+      operationId: catalogCategories
+      tags: [discover]
+      summary: Categories with counts
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { categories: { type: array, items: { type: object, properties: { category: { type: string }, count: { type: integer } } } } } } } } }
+  /catalog/sources:
+    get:
+      operationId: catalogSources
+      tags: [discover]
+      summary: Catalog sources with last refresh, size, error and attribution
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+  /catalog/refresh:
+    post:
+      operationId: refreshCatalog
+      tags: [discover]
+      summary: Refresh every source now (admin key or paired device)
+      responses:
+        "202": { description: Started }
+        "403": { $ref: "#/components/responses/Problem" }
+  /catalog/dockerhub:
+    get:
+      operationId: searchDockerHub
+      tags: [discover]
+      summary: Live Docker Hub search (long tail, not indexed)
+      parameters: [{ name: q, in: query, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/CatalogItem" } } } } } } }
+  /catalog/{id}:
+    get:
+      operationId: getCatalogEntry
+      tags: [discover]
+      summary: One catalog entry (plus whether it is installed)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/CatalogItem" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /recipes:
+    get:
+      operationId: listRecipes
+      tags: [discover]
+      summary: Curated (repo recipes/) and user (<home>/config/recipes/) recipes
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+  /apps/installed:
+    get:
+      operationId: listInstalledApps
+      tags: [apps]
+      summary: Apps installed by Server OS (<home>/apps/*/app.yaml)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+  /apps/plan:
+    post:
+      operationId: planInstall
+      tags: [apps]
+      summary: Dry run — the compose file or package an install would use
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/InstallRequest" } } } }
+      responses:
+        "200": { description: The plan, content: { application/json: { schema: { type: object } } } }
+        "422": { $ref: "#/components/responses/Problem" }
+  /apps:
+    post:
+      operationId: installApp
+      tags: [apps]
+      summary: Install an app from the catalog; progress streams in the `operations` state slice
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/InstallRequest" } } } }
+      responses:
+        "202": { description: Started, content: { application/json: { schema: { $ref: "#/components/schemas/Operation" } } } }
+        "422": { $ref: "#/components/responses/Problem" }
+  /apps/{id}:
+    delete:
+      operationId: uninstallApp
+      tags: [apps]
+      summary: Uninstall an app (data kept unless purge=true)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: purge, in: query, schema: { type: boolean, default: false } }
+      responses:
+        "202": { description: Started, content: { application/json: { schema: { $ref: "#/components/schemas/Operation" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /apps/agent-install:
+    post:
+      operationId: agentInstall
+      tags: [apps]
+      summary: A background agent run installs and sets up the app (an operation with agent=true). Without Claude Code on the server, a request is left in <home>/agent/inbox instead.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AgentRequest" } } } }
+      responses:
+        "202": { description: "Started (Operation) or queued ({ ok, file })", content: { application/json: { schema: { type: object } } } }
+        "422": { $ref: "#/components/responses/Problem" }
+  /apps/ask-agent:
+    post:
+      operationId: askAgent
+      deprecated: true
+      tags: [apps]
+      summary: Same as /apps/agent-install (kept for older apps)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AgentRequest" } } } }
+      responses:
+        "202": { description: Started or queued, content: { application/json: { schema: { type: object } } } }
+        "422": { $ref: "#/components/responses/Problem" }
+  /apps/{id}/setup:
+    post:
+      operationId: setupApp
+      tags: [apps]
+      summary: Run the agent's first-run setup (again) for an installed app; ends with its ready card
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { note: { type: string, maxLength: 2000 } } } } } }
+      responses:
+        "202": { description: Started, content: { application/json: { schema: { $ref: "#/components/schemas/Operation" } } } }
+        "422": { $ref: "#/components/responses/Problem" }
+  /apps/{id}/secrets:
+    get:
+      operationId: getAppSecrets
+      tags: [apps]
+      summary: Generated passwords of an installed app (paired devices; anyone when auth is off; never the agent)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { secrets: { type: object, additionalProperties: { type: string } } } } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: newAppSecret
+      tags: [apps]
+      summary: Make (or return the existing) random secret for an app — used by the agent during setup
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, pattern: "^[A-Za-z0-9_-]{1,40}$" }, length: { type: integer, minimum: 12, maximum: 64 } } } } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { name: { type: string }, value: { type: string } } } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+  /apps/{id}/ready:
+    post:
+      operationId: reportReady
+      tags: [apps]
+      summary: Save the app's ready card (written by the agent at the end of setup)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ReadyInput" } } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Ready" } } } }
+        "422": { $ref: "#/components/responses/Problem" }
+  /catalog/genres:
+    get:
+      operationId: catalogGenres
+      tags: [discover]
+      summary: Discover genres with counts, sub-shelves (categories) and a few logos
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+  /catalog/home:
+    get:
+      operationId: catalogHome
+      tags: [discover]
+      summary: Discover's front page — weekly editor's picks, "Instead of …", starter packs and shelves (incl. "because you run X")
+      description: "`featured` holds the rotating Editor's-pick slots: `hero` (up to 7 apps, this week's pick first, preferring ones with a screenshot and logo) and `side` (one list of up to 6 per side card, grouped by theme). No app appears in two lists, and the order is the same for everyone within an ISO week."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { picks: { type: array, items: { type: object } }, featured: { type: object, properties: { hero: { type: array, items: { type: object } }, side: { type: array, items: { type: array, items: { type: object } } } } }, replaces: { type: array, items: { type: object } }, packs: { type: array, items: { type: object } }, shelves: { type: array, items: { type: object } } } } } } }
+  /catalog/running:
+    get:
+      operationId: catalogRunning
+      tags: [discover]
+      summary: Catalog ids of apps already on this server, with their address ("" when they have no web page)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { apps: { type: object, additionalProperties: { type: string } } } } } } }
+  /catalog/refresh-recipes:
+    post:
+      operationId: refreshRecipes
+      tags: [discover]
+      summary: Re-read recipes now (after writing one) so they can be installed right away
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+  /apps/delete-plan:
+    get:
+      operationId: deletePlan
+      tags: [apps]
+      summary: What deleting an app would do, and whether it can be deleted
+      parameters: [{ name: name, in: query, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: The plan
+          content: { application/json: { schema: { type: object, properties: { name: { type: string }, deletable: { type: boolean }, reason: { type: string }, installed: { type: boolean }, canPurge: { type: boolean }, steps: { type: array, items: { type: string } } } } } }
+  /apps/delete:
+    post:
+      operationId: deleteApp
+      tags: [apps]
+      summary: Delete an app (not locked core services or VMs)
+      description: |
+        Apps Server OS installed are uninstalled (data kept unless purge). Apps from the hand-written catalog:
+        containers removed (images, volumes, data stay), LaunchAgents unloaded with the plist moved aside,
+        gate switch files removed, catalog entry dropped after a backup. Progress in the operations slice.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, purge: { type: boolean, default: false } } } } } }
+      responses:
+        "202": { description: Started, content: { application/json: { schema: { $ref: "#/components/schemas/Operation" } } } }
+        "409": { $ref: "#/components/responses/Problem" }
+  /apps/{name}/logins:
+    get:
+      operationId: listLogins
+      tags: [apps]
+      summary: Where an app's logins live (variable names, never values)
+      parameters: [{ name: name, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Logins
+          content: { application/json: { schema: { type: object, properties: { logins: { type: array, items: { $ref: "#/components/schemas/Login" } }, canReveal: { type: boolean }, authOff: { type: boolean } } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /apps/{name}/logins/reveal:
+    post:
+      operationId: revealLogin
+      tags: [apps]
+      summary: Read one login's username and password
+      description: Needs `auth` on and a signed-in owner or paired device; refused for the agent; audited (`login.reveal`). Only ids listed for the app.
+      parameters: [{ name: name, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string } } } } } }
+      responses:
+        "200": { description: The values, content: { application/json: { schema: { type: object, properties: { user: { type: [string, "null"] }, password: { type: [string, "null"] } } } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+  /apps/{name}/logins/link:
+    post:
+      operationId: linkLogin
+      tags: [apps]
+      summary: Link (or unlink) a login made of ~/.env variable names
+      parameters: [{ name: name, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { passwordEnv: { type: string }, userEnv: { type: string }, user: { type: string }, unlink: { type: boolean } } } } } }
+      responses:
+        "200": { $ref: "#/components/responses/Legacy" }
+        "422": { $ref: "#/components/responses/Problem" }
+  /logins/env-keys:
+    get:
+      operationId: loginEnvKeys
+      tags: [apps]
+      summary: Names of ~/.env variables that look like usernames or passwords
+      responses:
+        "200": { description: Names, content: { application/json: { schema: { type: array, items: { type: string } } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+  /bots/{channel}/feed:
+    get:
+      operationId: botFeed
+      tags: [bots]
+      summary: Live feed of a bot's Claude Code session (SSE)
+      description: |
+        Events: `reset` `{ items, meta }` (recent feed + panel state), then `items` (new or changed items, by stable id)
+        and `meta` (background jobs, schedules, requests, model/effort, working state) when they change.
+      parameters: [{ $ref: "#/components/parameters/Channel" }]
+      responses:
+        "200": { description: Event stream, content: { text/event-stream: { schema: { type: string } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /bots/{channel}/snapshot:
+    get:
+      operationId: botSnapshot
+      tags: [bots]
+      summary: The same feed for polling clients — the tail since the last count
+      parameters:
+        - { $ref: "#/components/parameters/Channel" }
+        - { name: session, in: query, schema: { type: string } }
+        - { name: since, in: query, schema: { type: integer, default: -1 } }
+      responses:
+        "200":
+          description: Feed tail
+          content: { application/json: { schema: { type: object, properties: { session: { type: [string, "null"] }, total: { type: integer }, reset: { type: boolean }, items: { type: array, items: { $ref: "#/components/schemas/FeedItem" } }, meta: { type: object } } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /bots/{channel}/sessions:
+    get:
+      operationId: botSessions
+      tags: [bots]
+      summary: Past sessions of a bot (newest first)
+      parameters: [{ $ref: "#/components/parameters/Channel" }]
+      responses:
+        "200": { description: Sessions, content: { application/json: { schema: { type: array, items: { type: object } } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /bots/{channel}/sessions/{id}:
+    get:
+      operationId: botSession
+      tags: [bots]
+      summary: One past session as a feed
+      parameters: [{ $ref: "#/components/parameters/Channel" }, { name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Feed, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/FeedItem" } } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /bots/{channel}/send:
+    post:
+      operationId: botSend
+      tags: [bots]
+      summary: Type a message into the session
+      parameters: [{ $ref: "#/components/parameters/Channel" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [text], properties: { text: { type: string, maxLength: 8000 } } } } } }
+      responses: { "200": { $ref: "#/components/responses/Legacy" }, "409": { $ref: "#/components/responses/Problem" } }
+  /bots/{channel}/interrupt:
+    post:
+      operationId: botInterrupt
+      tags: [bots]
+      summary: Press Escape in the session (tmux bots)
+      parameters: [{ $ref: "#/components/parameters/Channel" }]
+      responses: { "200": { $ref: "#/components/responses/Legacy" }, "409": { $ref: "#/components/responses/Problem" } }
+  /bots/{channel}/model:
+    post:
+      operationId: botModel
+      tags: [bots]
+      summary: Switch the session's model (/model); the global Claude Code default is kept
+      parameters: [{ $ref: "#/components/parameters/Channel" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [model], properties: { model: { type: string, enum: [fable, opus, sonnet, haiku] } } } } } }
+      responses: { "200": { $ref: "#/components/responses/Legacy" }, "400": { $ref: "#/components/responses/Problem" } }
+  /bots/{channel}/effort:
+    post:
+      operationId: botEffort
+      tags: [bots]
+      summary: Switch the session's effort (/effort); the global default is kept
+      parameters: [{ $ref: "#/components/parameters/Channel" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [effort], properties: { effort: { type: string, enum: [low, medium, high, xhigh, max] } } } } } }
+      responses: { "200": { $ref: "#/components/responses/Legacy" }, "400": { $ref: "#/components/responses/Problem" } }
+  /bots/{channel}/jobs/{id}/stop:
+    post:
+      operationId: botJobStop
+      tags: [bots]
+      summary: Stop a background job (its process; a sub-agent is asked to stop)
+      parameters: [{ $ref: "#/components/parameters/Channel" }, { name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { $ref: "#/components/responses/Legacy" }, "404": { $ref: "#/components/responses/Problem" } }
+  /bots/{channel}/jobs/{id}/start:
+    post:
+      operationId: botJobStart
+      tags: [bots]
+      summary: Ask the bot to start a background job again
+      parameters: [{ $ref: "#/components/parameters/Channel" }, { name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { $ref: "#/components/responses/Legacy" }, "404": { $ref: "#/components/responses/Problem" } }
+  /bots/{channel}/schedules/{id}/stop:
+    post:
+      operationId: botScheduleStop
+      tags: [bots]
+      summary: Ask the bot to cancel one of its cron jobs
+      parameters: [{ $ref: "#/components/parameters/Channel" }, { name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { $ref: "#/components/responses/Legacy" }, "404": { $ref: "#/components/responses/Problem" } }
+  /bots/{channel}/requests:
+    post:
+      operationId: botRequestJob
+      tags: [bots]
+      summary: Ask the bot to set up a background job (pending → running or failed)
+      parameters: [{ $ref: "#/components/parameters/Channel" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [kind, name, what], properties: { kind: { type: string, enum: [watch, schedule, task] }, name: { type: string }, what: { type: string }, options: { type: object } } } } }
+      responses:
+        "200": { description: Sent, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, id: { type: string }, prompt: { type: string } } } } } }
+        "400": { $ref: "#/components/responses/Problem" }
+  /bots/{channel}/requests/preview:
+    get:
+      operationId: botRequestPreview
+      tags: [bots]
+      summary: The instructions a request would send
+      parameters: [{ $ref: "#/components/parameters/Channel" }]
+      responses: { "200": { description: Prompt, content: { application/json: { schema: { type: object, properties: { prompt: { type: string } } } } } }, "404": { $ref: "#/components/responses/Problem" } }
+  /bots/{channel}/requests/{id}:
+    delete:
+      operationId: botDismissRequest
+      tags: [bots]
+      summary: Forget a request
+      parameters: [{ $ref: "#/components/parameters/Channel" }, { name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "204": { description: Gone }, "404": { $ref: "#/components/responses/Problem" } }
+  /operations/{id}:
+    get:
+      operationId: getOperation
+      tags: [apps]
+      summary: An install/uninstall operation with its log
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Operation" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /dashboards:
+    get:
+      operationId: listDashboards
+      tags: [dashboards]
+      summary: Dashboards (id, title, card count)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+  /dashboards/schema:
+    get:
+      operationId: dashboardSchema
+      tags: [dashboards]
+      summary: The JSON Schema dashboards follow (spec/dashboard.schema.json)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+  /dashboards/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,47}$" } }]
+    get:
+      operationId: getDashboard
+      tags: [dashboards]
+      summary: One dashboard
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "dashboard.schema.json" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+    put:
+      operationId: saveDashboard
+      tags: [dashboards]
+      summary: Create or replace a dashboard (validated against the schema)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "dashboard.schema.json" } } } }
+      responses:
+        "200": { description: Saved }
+        "422": { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteDashboard
+      tags: [dashboards]
+      summary: Delete a dashboard
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Problem" }
+  /logs/server:
+    get:
+      operationId: queryServerLogs
+      tags: [observability]
+      summary: The server's structured log, newest first
+      parameters:
+        - { name: level, in: query, schema: { type: string, enum: [debug, info, warn, error] }, description: minimum level }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: trace, in: query, schema: { type: string } }
+        - { name: since, in: query, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, default: 200, maximum: 2000 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { logs: { type: array, items: { $ref: "#/components/schemas/LogRecord" } } } } } } }
+  /logs/summary:
+    get:
+      operationId: logSummary
+      tags: [observability]
+      summary: Errors and warnings of the last 24 h, grouped by message
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+  /audit:
+    get:
+      operationId: listAudit
+      tags: [observability]
+      summary: Who did what (devices, web, agent, webhooks), newest first
+      parameters:
+        - { name: actor, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 100 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+    post:
+      operationId: writeAudit
+      tags: [observability]
+      summary: Record an action done outside the API (used by the agent)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { actor: { type: string }, action: { type: string }, target: { type: string }, result: { type: string, enum: [ok, failed] } } } } } }
+      responses:
+        "204": { description: Recorded }
+  /traces/{id}:
+    get:
+      operationId: getTrace
+      tags: [observability]
+      summary: Everything recorded under one trace id — log lines, audit entries, job runs
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+
+  /cos/{action}:
+    get:
+      operationId: readBots
+      tags: [bots]
+      summary: Read bot sessions, terminal, conversations or transcript
+      description: |
+        Served by the native bot manager (botSessions, bot/terminal, bot/conversations; query `channel`) or passed through
+        to Claude OS. With bots.provider both, native bots are served here and the rest by Claude OS, in one botSessions
+        list (a native bot replaces a Claude OS row of the same name). Each bot row carries `provider` (native | claudeOS); native rows also carry `telegram`, `tokenKey`
+        (the ~/.env variable name, never the token), `effort`, `permissionMode`, `tmux` (the session name) and a workspace
+        summary: `preset`, `role`, `isolated`, `sandbox`, `network`, `folders`, `secrets` (a count), `team` (agmsg team,
+        null without agmsg) and `adopted` (works in an existing folder).
+        Native only: bot/settings (`channel`) returns `{ policy, permissionMode, cwd, ownerChatIds, defaultOwnerChatIds,
+        configDir, catalog: { skills, plugins, mcp, envKeys }, agmsg: { installed, team, scripts } | { installed: false, repo, install } }`
+        (envKeys are names, never values); bot/catalog returns the catalog alone; bot/agmsg (`channel`, `limit`) returns
+        `{ installed, team, members, messages: [{ unread, at, from, to, body }] }` from agmsg's history.sh.
+      parameters: [{ name: action, in: path, required: true, schema: { type: string, enum: [botSessions, bot/terminal, bot/conversations, bot/transcript, bot/transcript-stream, bot/settings, bot/catalog, bot/agmsg] } }]
+      responses:
+        "200": { description: From the bot manager }
+        "404": { description: "No bot manager (no tmux / claude CLI and no integrations.claudeOS), or not available for this provider" }
+        "502": { $ref: "#/components/responses/Legacy" }
+    post:
+      operationId: botAction
+      tags: [bots]
+      summary: Bot actions
+      description: |
+        Native: bot/create `{ name, model?, effort?, permissionMode? (default dontAsk), tokenEnv?, preset?, role?, folders?,
+        network?, sandbox?, readAnywhere?, isolated?, globalInstructions?, secrets?, skills?, plugins?, mcp?, dir?, team?, telegramStateDir? }`
+        (dir: adopt an existing folder in place; team: its agmsg team; telegramStateDir: an existing Telegram state folder,
+        with tokenEnv), bot/save-settings `{ channel, preset?, allow?,
+        deny?, folders?: [{ path, write }], network?, sandbox?, readAnywhere?, isolated?, globalInstructions?, role?, secrets?: [ENV_NAME], skills?/plugins?/mcp?:
+        { id: boolean }, permissionMode?, ownerChatIds? }` (rewrites the bot's .claude/settings.json, .mcp.json, skill links and
+        CLAUDE.md identity; applies on restart), bot/launch `{ channel, resume? }`
+        (resume: null = fresh, "last" = --continue, or a session id), bot/stop, bot/restart, bot/delete (keeps the
+        folder), bot/set-token `{ channel, tokenEnv }` and bot/send-prompt `{ channel, text }`. skill-scope, mcp-scope
+        and reconnect-mcp are Claude OS only. Claude OS: bot/create and bot/set-token take `token`.
+      parameters: [{ name: action, in: path, required: true, schema: { type: string, enum: [bot/restart, bot/stop, bot/launch, bot/skill-scope, bot/mcp-scope, bot/create, bot/set-token, bot/send-prompt, bot/reconnect-mcp, bot/delete, bot/save-settings] } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        "200": { description: "From the bot manager: `{ ok, detail? }`" }
+        "400": { description: "Native: `{ ok: false, error }` (validation, not running, …)" }
+        "502": { $ref: "#/components/responses/Legacy" }
+  /bot-instructions:
+    get:
+      operationId: getBotInstructions
+      tags: [bots]
+      summary: A bot's CLAUDE.md
+      parameters: [{ name: channel, in: query, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, path: { type: string }, editable: { type: boolean }, text: { type: string } } } } } }
+    post:
+      operationId: saveBotInstructions
+      tags: [bots]
+      summary: Save a bot's CLAUDE.md (not the protected main bot)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [channel, text], properties: { channel: { type: string }, text: { type: string, maxLength: 200000 } } } } } }
+      responses:
+        "200": { $ref: "#/components/responses/Legacy" }
+        "403": { $ref: "#/components/responses/Legacy" }
+
+  /storage:
+    get:
+      operationId: getStorage
+      tags: [storage]
+      summary: Disk usage overview (served by the storage module)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+
+  /permissions:
+    get:
+      operationId: listPermissions
+      tags: [permissions]
+      summary: Permissions this install needs (macOS privacy grants, Linux access settings), with status
+      description: |
+        Runs only checks that cannot raise a macOS popup. Permissions whose check can (Local Network, volumes, folders)
+        report `unknown` until `POST /permissions/{id}/check`. Linux entries carry copyable `fix` commands instead of a Settings link. Empty list on other platforms. Never writes TCC.db.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Permissions" } } } }
+  /permissions/{id}/check:
+    post:
+      operationId: checkPermission
+      tags: [permissions]
+      summary: Re-check one permission (may make macOS show its allow popup)
+      parameters: [{ $ref: "#/components/parameters/PermissionId" }]
+      responses:
+        "200": { description: "The refreshed list plus the checked entry", content: { application/json: { schema: { $ref: "#/components/schemas/Permissions" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /permissions/{id}/open:
+    post:
+      operationId: openPermissionSettings
+      tags: [permissions]
+      summary: Fix a macOS permission on the server's Mac (admin only)
+      description: "A permission macOS asks about with a popup gets that popup (`did: prompt`); one without a prompt, or whose popup is spent after a Don't Allow (`pane: true`), opens its System Settings pane (`did: pane`). 404 on non-macOS."
+      parameters: [{ $ref: "#/components/parameters/PermissionId" }]
+      requestBody:
+        required: false
+        content: { application/json: { schema: { type: object, properties: { pane: { type: boolean, description: "Skip the popup and open the Settings pane" } } } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, did: { type: string, enum: [prompt, pane, granted] }, denied: { type: boolean } } } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+        "502": { $ref: "#/components/responses/Problem" }
+  /screen:
+    get:
+      operationId: screenStatus
+      tags: [screen]
+      summary: Is the remote screen on, is Screen Sharing listening, is a session open
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, listening, platform, active]
+                properties:
+                  enabled: { type: boolean, description: "integrations.screen.enabled (and a loopback host)" }
+                  listening: { type: boolean, description: "Screen Sharing accepts TCP connections on host:port (no RFB bytes are sent)" }
+                  platform: { type: string }
+                  host: { type: string }
+                  port: { type: integer }
+                  idleMinutes: { type: number }
+                  maxMinutes: { type: number }
+                  active: { type: [object, "null"], properties: { since: { type: integer }, lastInput: { type: integer } } }
+  /screen/ws:
+    get:
+      operationId: screenSocket
+      tags: [screen]
+      summary: WebSocket to the Mac's Screen Sharing (raw RFB bytes, subprotocol "binary")
+      description: |
+        Upgrades to a WebSocket and pipes bytes both ways to Screen Sharing on loopback (default 127.0.0.1:5900). The RFB
+        login (Apple auth, security type 30) happens inside the stream: the server never sees the Mac credentials in clear.
+        Only the local admin key or a paired device / signed-in browser; never anonymous, never the agent. A browser's Origin
+        must match the panel's host. One session at a time (409 unless `takeover=1`, which closes the open one with 4003).
+        Close codes: 4001 idle (no keyboard / pointer input for idleMinutes), 4002 hard cap (maxMinutes), 4003 taken over,
+        4004 Screen Sharing closed, 4005 Screen Sharing unreachable. Every open and close is written to the audit log.
+      parameters:
+        - { name: takeover, in: query, required: false, schema: { type: string, enum: ["1"] }, description: "Close a session that is already open and take its place" }
+      responses:
+        "101": { description: Switching Protocols }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "426": { $ref: "#/components/responses/Problem" }
+
+components:
+  securitySchemes:
+    device: { type: http, scheme: bearer, description: "Device token from POST /pair (or the server's local admin key)." }
+  responses:
+    Problem:
+      description: RFC 9457 problem details
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Legacy:
+      description: "Action result: `{ ok, detail }` or `{ error }`"
+      content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, detail: { type: string }, error: { type: string } } } } }
+  parameters:
+    PermissionId: { name: id, in: path, required: true, schema: { type: string, enum: [full-disk-access, local-network, removable-volumes, files-folders, microphone, automation, docker-access, path-access, linger, firewall, selinux] } }
+    Channel: { name: channel, in: path, required: true, schema: { type: string }, description: "Bot channel (telegram = the main bot)" }
+  schemas:
+    Permissions:
+      type: object
+      required: [platform, permissions, missingRequired]
+      properties:
+        platform: { type: string }
+        missingRequired: { type: array, items: { type: string }, description: "Ids of required permissions that are missing (the Overview banner)" }
+        permission: { type: [object, "null"], description: "Only on /check: the entry that was checked" }
+        permissions:
+          type: array
+          items:
+            type: object
+            required: [id, title, why, features, required, needed, status, detail, active, processes, how, settingsUrl, fix]
+            properties:
+              id: { type: string, enum: [full-disk-access, local-network, removable-volumes, files-folders, microphone, automation, docker-access, path-access, linger, firewall, selinux] }
+              title: { type: string }
+              why: { type: string }
+              features: { type: array, items: { type: string } }
+              required: { type: boolean, description: "A missing grant breaks something switched on in this config" }
+              needed: { type: boolean }
+              status: { type: string, enum: [granted, missing, unknown, not-needed] }
+              detail: { type: string }
+              active: { type: boolean, description: "Its check can raise a macOS popup, so it runs only on POST …/check" }
+              processes: { type: array, items: { type: object, properties: { role: { type: string }, path: { type: string, description: "The binary macOS keys the grant on. A bun upgrade changes it and can reset the grant" } } } }
+              how: { type: string, enum: [dialog, settings, ""], description: "macOS: dialog = an Allow popup the server can trigger, settings = only a switch in System Settings, empty = not a macOS grant" }
+              settingsUrl: { type: string, description: "macOS: the System Settings pane to open. Empty on Linux" }
+              fix: { type: array, items: { type: string }, description: "Linux: commands to copy and run. Empty on macOS" }
+              targets: { type: array, items: { type: string }, description: "macOS: the exact entries to switch on under the program (folders, volumes, apps to control). Absent or empty when nothing is configured" }
+    Login:
+      type: object
+      properties:
+        id: { type: string }
+        label: { type: string }
+        source: { type: string, enum: [installer, linked, env, docker] }
+        kind: { type: string, enum: [login, database] }
+        from: { type: string, description: Where the values live (variable names) }
+        user: { type: [string, "null"] }
+        hasUser: { type: boolean }
+    FeedItem:
+      type: object
+      required: [id, kind, ts]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [user, assistant, step, event] }
+        ts: { $ref: "#/components/schemas/EpochMs" }
+        text: { type: string }
+        via: { type: string, enum: [telegram, dash, terminal] }
+        from: { type: string }
+        tool: { type: string }
+        title: { type: string }
+        detail: { type: string }
+        status: { type: string, enum: [running, ok, error] }
+        ms: { type: number }
+        out: { type: string }
+    EpochMs: { type: integer, description: Unix time in milliseconds }
+    EpochS: { type: number, description: Unix time in seconds }
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        trace_id: { type: string, description: Look this up in logs/server.jsonl }
+    Info:
+      type: object
+      required: [name, version, api, auth, capabilities]
+      properties:
+        name: { type: string }
+        version: { type: string }
+        api: { type: string, const: v1 }
+        auth: { type: string, enum: ["off", token] }
+        platform: { type: string, examples: [darwin, linux] }
+        capabilities:
+          type: array
+          items: { type: string, enum: [system, update, history, apps, jobs, scheduler, webhooks, catalog, install, logs-traces, audit, dashboards, ports, alerts, logs, bots, storage, claude, pairing, permissions, agent, voice, houseVoice, screen, voiceSession] }
+    UpdateStatus:
+      type: object
+      required: [current, mode, updateAvailable, canApply, state, settings]
+      properties:
+        current: { type: string, description: running version }
+        mode: { type: string, enum: [release, git, homebrew, docker, unmanaged] }
+        service: { type: [string, "null"], examples: ["launchd:dev.serveros.server"] }
+        latest:
+          type: [object, "null"]
+          properties: { tag: { type: string }, version: { type: string }, name: { type: string }, notes: { type: string, description: Markdown }, prerelease: { type: boolean }, publishedAt: { type: [string, "null"] }, url: { type: [string, "null"] }, signed: { type: boolean } }
+        updateAvailable: { type: boolean }
+        canApply: { type: boolean }
+        blocked: { type: [string, "null"], description: why applying is off here }
+        checkedAt: { type: [integer, "null"] }
+        checkError: { type: [string, "null"] }
+        state: { type: string, enum: [idle, checking, downloading, verifying, installing, restarting, failed] }
+        detail: { type: string }
+        error: { type: [string, "null"] }
+        last:
+          type: [object, "null"]
+          properties: { ok: { type: boolean }, from: { type: string }, to: { type: string }, at: { type: integer }, reason: { type: string }, rolledBack: { type: boolean } }
+        settings: { type: object, properties: { channel: { type: string, enum: [stable, beta] }, auto: { type: string, enum: ["off", notify, nightly] } } }
+        nextAutoAt: { type: [integer, "null"] }
+    Device:
+      type: object
+      required: [id, name, platform, created]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        platform: { type: string }
+        created: { $ref: "#/components/schemas/EpochMs" }
+        lastSeen: { oneOf: [{ $ref: "#/components/schemas/EpochMs" }, { type: "null" }] }
+    RangeSeries:
+      type: object
+      required: [step, start, t, avg, min, max]
+      properties:
+        step: { type: integer, description: Bucket width in seconds }
+        start: { $ref: "#/components/schemas/EpochS" }
+        since: { description: Oldest sample the server has for this metric, oneOf: [{ $ref: "#/components/schemas/EpochS" }, { type: "null" }] }
+        t: { type: array, items: { $ref: "#/components/schemas/EpochS" }, description: Bucket start times }
+        avg: { type: array, items: { type: [number, "null"] } }
+        min: { type: array, items: { type: [number, "null"] } }
+        max: { type: array, items: { type: [number, "null"] } }
+    RawSeries:
+      type: object
+      properties:
+        t: { type: array, items: { $ref: "#/components/schemas/EpochS" } }
+        v: { type: array, items: { type: [number, "null"] } }
+        since: { type: [number, "null"] }
+    App:
+      type: object
+      required: [name, group, state, kind]
+      properties:
+        name: { type: string }
+        group: { type: string }
+        order: { type: integer }
+        href: { type: string }
+        icon: { type: string }
+        about: { type: string }
+        kind: { type: string, enum: [lock, gate, switch], description: "lock: always on. gate: on/off at the proxy. switch: starts/stops processes." }
+        warn: { type: boolean }
+        state: { type: string, enum: ["on", "off", part] }
+        parts: { type: object, additionalProperties: { type: boolean } }
+        mem: { type: number, description: MB }
+    Job:
+      type: object
+      required: [id, name, schedule, enabled, status]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        schedule: { type: string, description: 5-field cron expression }
+        when: { type: string, description: Human-readable schedule }
+        enabled: { type: boolean }
+        nextRun: { type: [number, "null"] }
+        prevRun: { type: [number, "null"] }
+        lastRun: { type: [number, "null"] }
+        status: { type: string }
+        cause: { type: string }
+        command: { type: string }
+        category: { type: [string, "null"] }
+        about: { type: [string, "null"] }
+        reports: { type: [string, "null"] }
+        project: { type: [string, "null"] }
+        runs: { type: array, items: { type: object, properties: { t: { type: number }, ok: { type: boolean } } } }
+        source: { type: string, const: server, description: Present on built-in jobs (id prefix `sd:`); crontab jobs have none }
+        kind: { type: string, enum: [command, claude, http] }
+        webhook: { type: boolean }
+    JobSpec:
+      type: object
+      required: [name, kind]
+      properties:
+        id: { type: string, readOnly: true }
+        name: { type: string }
+        kind: { type: string, enum: [command, claude, http] }
+        schedule: { type: string, description: '5-field cron ("*/5 * * * *") or "@every 10m"; empty = manual / webhook only' }
+        command: { type: string, description: "command kind: run with /bin/sh -c" }
+        prompt: { type: string, description: "claude kind: run with `claude -p` in the agent folder (the user's subscription)" }
+        allowedTools: { type: array, items: { type: string }, description: "claude kind: passed to --allowedTools" }
+        url: { type: string, description: "http kind" }
+        expect: { type: integer, default: 200 }
+        cwd: { type: string }
+        timeout: { type: integer, default: 3600, maximum: 86400 }
+        enabled: { type: boolean, default: true }
+        webhook: { type: boolean, default: false }
+        about: { type: string }
+        category: { type: string }
+        error: { type: [string, "null"], readOnly: true, description: Why the job.yaml on disk is invalid }
+        webhookUrl: { type: [string, "null"], readOnly: true }
+    Run:
+      type: object
+      properties:
+        id: { type: integer }
+        job: { type: string }
+        trigger: { type: string, enum: [schedule, manual, webhook] }
+        actor: { type: string }
+        started: { $ref: "#/components/schemas/EpochMs" }
+        ended: { type: [integer, "null"] }
+        exitCode: { type: [integer, "null"], description: "124 = timed out" }
+        ok: { type: [boolean, "null"] }
+        durationMs: { type: [integer, "null"] }
+        output: { type: string, description: Last 64 KB of stdout + stderr }
+        traceId: { type: string }
+    CatalogItem:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        website: { type: [string, "null"] }
+        repo: { type: [string, "null"] }
+        license: { type: [string, "null"] }
+        stars: { type: [integer, "null"] }
+        updated: { type: [string, "null"] }
+        archived: { type: boolean }
+        logo: { type: [string, "null"] }
+        sources: { type: array, items: { type: string } }
+        install: { type: array, items: { type: object, properties: { method: { type: string, enum: [recipe, casaos, linuxserver, brew, cask, dockerhub] }, ref: { type: string }, label: { type: string } } } }
+        installed: { type: boolean }
+    InstallRequest:
+      type: object
+      required: [catalogId]
+      properties:
+        catalogId: { type: string }
+        method: { type: string, enum: [recipe, casaos, linuxserver, brew, cask], description: Default is the best ranked option }
+        agentSetup: { type: boolean, description: "Let a background agent run finish setup after the install (default: apps.agentSetup in the config, when Claude Code is installed)" }
+        note: { type: string, maxLength: 2000, description: For the agent's setup run }
+    AgentRequest:
+      type: object
+      required: [catalogId]
+      properties:
+        catalogId: { type: string }
+        note: { type: string, maxLength: 2000 }
+    ReadyInput:
+      type: object
+      required: [url, summary]
+      properties:
+        url: { type: string }
+        username: { type: string }
+        secret: { type: string, description: Name of the secret that holds the password }
+        summary: { type: string }
+        steps: { type: array, items: { type: string }, maxItems: 12 }
+    Ready:
+      allOf:
+        - { $ref: "#/components/schemas/ReadyInput" }
+        - { type: object, properties: { at: { type: integer } } }
+    Operation:
+      type: object
+      properties:
+        id: { type: string }
+        app: { type: string }
+        name: { type: string }
+        action: { type: string, enum: [install, uninstall, setup] }
+        agent: { type: boolean, description: A background Claude Code run does the work }
+        status: { type: string, enum: [running, ok, failed] }
+        step: { type: string }
+        log: { type: string }
+        started: { type: integer }
+        ended: { type: [integer, "null"] }
+        traceId: { type: string }
+        actor: { type: string }
+    LogRecord:
+      type: object
+      properties:
+        time: { type: string, format: date-time }
+        level: { type: string, enum: [debug, info, warn, error] }
+        service: { type: string }
+        message: { type: string }
+        trace_id: { type: string }
+        span_id: { type: string }
+        attributes: { type: object }
+    ClaudeUsage:
+      type: object
+      properties:
+        plan: { type: [string, "null"] }
+        session: { type: [object, "null"], properties: { pct: { type: number }, resetsAt: { type: [number, "null"] } } }
+        week: { type: [object, "null"], properties: { pct: { type: number }, resetsAt: { type: [number, "null"] } } }
+        fetchedAt: { type: number }
+        error: { type: [string, "null"] }
+    ClaudeJob:
+      type: object
+      properties:
+        pid: { type: integer }
+        kind: { type: string, enum: [bot, headless, interactive] }
+        label: { type: string }
+        detail: { type: string }
+        model: { type: [string, "null"] }
+        cwd: { type: [string, "null"] }
+        startedAt: { type: number }
+        cpu: { type: number }
+        memMB: { type: number }
+        endedAt: { type: [number, "null"] }
+    State:
+      type: object
+      description: Top-level slices; each one is replaced whole by a `slice` event or per entry by an `entry` event. Unknown slices must be ignored.
+      additionalProperties: true
+      properties:
+        system: { type: object, description: "Temperatures, load, RAM, swap, disks" }
+        apps: { type: object, additionalProperties: { $ref: "#/components/schemas/App" } }
+        groups: { type: array, items: { type: string } }
+        jobs: { type: array, items: { $ref: "#/components/schemas/Job" } }
+        claudeUsage: { oneOf: [{ $ref: "#/components/schemas/ClaudeUsage" }, { type: "null" }] }
+        claudeJobs: { type: array, items: { $ref: "#/components/schemas/ClaudeJob" } }
+        botSessions: { type: [array, "null"], items: { type: object } }
+        life: { type: object }
+        sysHistory: { type: object }
+        speed: { type: object }
+        dns: { type: object }
+        ha: { type: object }
+        uptime: { type: object }
+        alerts24: { type: object }
+        hooks: { type: object }
+        bots: { type: object }

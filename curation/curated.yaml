@@ -1,0 +1,133 @@
+# Discover's hand-made layer. Ids are catalog ids (GET /api/v1/catalog/{id}).
+# Pull requests welcome: keep reasons to one plain sentence, and only list apps that are maintained.
+
+# Editor's picks: three show at a time and rotate weekly. `why` is the one line under the name.
+picks:
+  - { id: immich, kicker: "Most loved", why: "Your phone's camera roll backs up to your own server, with face search, a map and shared family albums." }
+  - { id: paperless-ngx, kicker: "Go paperless", why: "Scan a letter and it is searchable in seconds; tags, dates and senders are filled in for you." }
+  - { id: mealie, kicker: "Hidden gem", why: "Paste any recipe link and get a clean recipe, a shopping list and a week plan." }
+  - { id: home-assistant, kicker: "Smart home", why: "Every light, sensor and plug in one app that keeps working when the internet doesn't." }
+  - { id: vaultwarden, kicker: "Privacy pick", why: "All your passwords, synced to the official Bitwarden apps, on a server you own." }
+  - { id: audiobookshelf, kicker: "For the commute", why: "Audiobooks and podcasts with progress synced between phone, car and speaker." }
+  - { id: n8n, kicker: "Automate it", why: "Connect your apps and run workflows on a schedule, like Zapier without the monthly bill." }
+  - { id: jellyfin, kicker: "Movie night", why: "Your own Netflix for the films and series you already have, on every TV and phone." }
+  - { id: open-webui, kicker: "Your own AI", why: "A ChatGPT-style chat for models running on this server; nothing leaves the house." }
+  - { id: syncthing, kicker: "Set and forget", why: "Folders stay in sync between your computers and phone, directly, with no cloud in between." }
+  - { id: uptime-kuma, kicker: "Peace of mind", why: "Pings everything you run and tells you on your phone the moment something goes down." }
+  - { id: stirling-pdf, kicker: "Handy", why: "Merge, split, sign, compress and OCR PDFs without uploading them to a random website." }
+
+# "Instead of …": the service you want to leave → apps that replace it, best first.
+replaces:
+  Google Photos: [immich, ente, photoprism, librephotos]
+  iCloud Photos: [immich, ente]
+  Netflix & Plex: [jellyfin, emby, plex]
+  Spotify: [navidrome, lidarr]
+  Audible: [audiobookshelf]
+  Kindle: [kavita, calibre-web]
+  Google Drive & Dropbox: [nextcloud, seafile, syncthing]
+  1Password & LastPass: [vaultwarden, passbolt]
+  Notion: [appflowy, affine, outline, docmost]
+  Evernote: [joplin, memos, trilium]
+  Confluence: [bookstack, wiki-js, outline]
+  Google Docs: [onlyoffice, cryptpad, etherpad]
+  Airtable: [nocodb, baserow]
+  Trello: [planka, wekan, vikunja]
+  Todoist: [vikunja]
+  ChatGPT: [open-webui, ollama, librechat]
+  Zapier: [n8n, node-red]
+  Slack: [mattermost, rocket-chat, element]
+  Zoom: [jitsi-meet]
+  Twitter / X: [mastodon]
+  Feedly: [freshrss, miniflux]
+  Pocket: [wallabag, linkding, karakeep]
+  Google Analytics: [umami, plausible-analytics]
+  Pingdom: [uptime-kuma, healthchecks]
+  Google Search: [searxng]
+  Pushover: [ntfy, gotify]
+  YNAB & Mint: [actual, firefly-iii]
+  Bitly: [shlink]
+  DocuSign: [docuseal]
+  Adobe Acrobat: [stirling-pdf]
+  Grammarly: [languagetool]
+  GitHub: [gitea, forgejo]
+  Google Home & Alexa: [home-assistant]
+  Ring & Nest cameras: [frigate]
+  Google Calendar: [radicale]
+  Paprika: [mealie, tandoor-recipes]
+  Pastebin: [privatebin]
+  Backblaze: [duplicati, kopiaui]
+
+# Starter packs: apps that work well together, installed in one go.
+packs:
+  - id: family-media
+    name: Family media server
+    blurb: Films and series for the TV, requests from the family, music and audiobooks.
+    tint: "#3b1f6b"
+    apps: [jellyfin, jellyseerr, navidrome, audiobookshelf]
+  - id: photo-backup
+    name: Photo & file backup
+    blurb: Phone photos, a shared drive, and folders synced between your computers.
+    tint: "#0f3d2c"
+    apps: [immich, nextcloud, syncthing]
+  - id: privacy
+    name: Privacy starter
+    blurb: Your own password manager, ad blocking for every device and a private search engine.
+    tint: "#3a1414"
+    apps: [vaultwarden, adguard-home, searxng]
+  - id: paperless-office
+    name: Paperless home office
+    blurb: Scanned post that files itself, every PDF tool, and documents you can edit together.
+    tint: "#3d2a0c"
+    apps: [paperless-ngx, stirling-pdf, onlyoffice]
+  - id: own-ai
+    name: Your own AI
+    blurb: Run language models on this server and chat with them from any device.
+    tint: "#2e1065"
+    apps: [ollama, open-webui]
+  - id: smart-home
+    name: Smart home basics
+    blurb: One app for every device, flows for the tricky automations, and local camera detection.
+    tint: "#0f3a37"
+    apps: [home-assistant, node-red, frigate]
+  - id: server-care
+    name: Keep an eye on things
+    blurb: Know when something goes down, get alerts on your phone, and see what changed on websites.
+    tint: "#1f2937"
+    apps: [uptime-kuma, ntfy, changedetection]
+  - id: kitchen
+    name: Kitchen & household
+    blurb: Recipes and meal plans, the shopping list and what's in the cupboard.
+    tint: "#4a2511"
+    apps: [mealie, grocy]
+
+# Works well with: shown on an app's page ("Immich → Nextcloud: keep documents next to your photos").
+pairs:
+  jellyfin:
+    - { id: jellyseerr, why: "The family requests films and series" }
+    - { id: radarr, why: "Finds and organises films" }
+    - { id: sonarr, why: "Finds and organises series" }
+    - { id: bazarr, why: "Subtitles for everything" }
+  immich:
+    - { id: nextcloud, why: "Keep documents next to your photos" }
+    - { id: jellyfin, why: "Watch your videos on the TV" }
+  home-assistant:
+    - { id: node-red, why: "Flows for the tricky automations" }
+    - { id: frigate, why: "Local person and car detection on your cameras" }
+  paperless-ngx:
+    - { id: stirling-pdf, why: "Fix and merge PDFs before filing them" }
+  ollama:
+    - { id: open-webui, why: "A chat app for the models" }
+  open-webui:
+    - { id: ollama, why: "Runs the models it talks to" }
+  radarr:
+    - { id: prowlarr, why: "One place for all indexers" }
+  sonarr:
+    - { id: prowlarr, why: "One place for all indexers" }
+  uptime-kuma:
+    - { id: ntfy, why: "Alerts as phone notifications" }
+  n8n:
+    - { id: ntfy, why: "Send workflow results to your phone" }
+  nextcloud:
+    - { id: onlyoffice, why: "Edit documents in the browser" }
+  mealie:
+    - { id: grocy, why: "Knows what's already in the cupboard" }

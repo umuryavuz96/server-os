@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Server OS, written by server-os-setup. Your edits are kept: the wizard never overwrites this file. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{{xml .Label}}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{xml .Bun}}</string>
+    <string>run</string>
+    <string>server/index.ts</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{{xml .SourceDir}}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>SERVER_OS_HOME</key>
+    <string>{{xml .Home}}</string>
+    <key>PORT</key>
+    <string>{{.Port}}</string>
+    <key>HOST</key>
+    <string>{{xml .Host}}</string>
+    <key>PATH</key>
+    <string>{{xml .Path}}</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>{{xml .LogDir}}/service.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{xml .LogDir}}/service.err.log</string>
+</dict>
+</plist>

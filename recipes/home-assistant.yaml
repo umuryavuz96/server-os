@@ -1,0 +1,59 @@
+id: home-assistant
+name: Home Assistant
+description: Smart-home hub that runs every light, sensor and plug locally, with apps for phones and tablets.
+category: Home Automation
+website: https://www.home-assistant.io
+repo: https://github.com/home-assistant/core
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/home-assistant.svg
+# Home Assistant Container: everything except add-ons (those need Home Assistant OS in a VM).
+# On Linux it gets the host network, so discovery (mDNS, UPnP, HomeKit, Chromecast) works. Docker Desktop on macOS
+# has no host network: the app runs on a published port and devices must be added by IP; USB and Bluetooth sticks
+# don't reach the container. For the full thing on a Mac, run Home Assistant OS in UTM (see notes).
+notes: |
+  Open it and finish in the app: add your devices and areas.
+  On a Mac, network discovery and USB/Bluetooth dongles don't reach Docker — add devices by IP address, or run
+  Home Assistant OS in a UTM virtual machine instead (2 GB RAM, gives you add-ons and the full discovery).
+  Zigbee/Z-Wave USB sticks on Linux: add them under `devices:` in compose.yaml in the app's folder.
+setup: |
+  First-run onboarding through the API (no auth while onboarding is open):
+    POST /api/onboarding/users {"client_id":"<base url>/","name":"<owner>","username":"<owner>","password":"<admin_password>","language":"en"} → {auth_code}
+    POST /auth/token (form) grant_type=authorization_code&code=<auth_code>&client_id=<base url>/ → access_token
+    With Authorization: Bearer <access_token>:
+      POST /api/onboarding/core_config {}   POST /api/onboarding/analytics {}
+      POST /api/onboarding/integration {"client_id":"<base url>/","redirect_uri":"<base url>/?auth_callback=1"}
+  If the app sits behind a reverse proxy (the app got a name like home-assistant.home), Home Assistant answers 400
+  until the proxy is trusted. Append to config/configuration.yaml in the app's data folder, then restart the container:
+    http:
+      use_x_forwarded_for: true
+      trusted_proxies: [127.0.0.1, ::1, 172.16.0.0/12, 192.168.0.0/16]
+  Check: GET /api/ with the token → {"message":"API running."}; the login page answers through the app's address.
+  Steps for the owner: install the Home Assistant app on the phone and sign in; add devices and areas.
+web:
+  port: 8123
+docker:
+  compose: |
+    services:
+      homeassistant:
+        image: ghcr.io/home-assistant/home-assistant:stable
+        container_name: sd-home-assistant
+        restart: unless-stopped
+        ports:
+          - "8123:8123"
+        environment:
+          TZ: "{{tz}}"
+        volumes:
+          - "{{data}}/config:/config"
+  linux: |
+    services:
+      homeassistant:
+        image: ghcr.io/home-assistant/home-assistant:stable
+        container_name: sd-home-assistant
+        restart: unless-stopped
+        network_mode: host
+        privileged: true
+        environment:
+          TZ: "{{tz}}"
+        volumes:
+          - "{{data}}/config:/config"
+          - /etc/localtime:/etc/localtime:ro
+          - /run/dbus:/run/dbus:ro

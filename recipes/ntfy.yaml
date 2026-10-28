@@ -1,0 +1,22 @@
+id: ntfy
+name: ntfy
+description: Send push notifications to your phone or desktop with a simple HTTP request.
+category: Communication
+website: https://ntfy.sh
+repo: https://github.com/binwiederhier/ntfy
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/ntfy.svg
+docker:
+  compose: |
+    services:
+      ntfy:
+        image: binwiederhier/ntfy:latest
+        container_name: sd-ntfy
+        command: serve
+        restart: unless-stopped
+        environment:
+          TZ: "{{tz}}"
+        ports:
+          - "{{port:8093}}:80"
+        volumes:
+          - "{{data}}/cache:/var/cache/ntfy"
+          - "{{data}}/etc:/etc/ntfy"

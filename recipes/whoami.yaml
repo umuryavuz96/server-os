@@ -1,0 +1,16 @@
+id: whoami
+name: whoami
+description: Tiny web server that echoes back the request — handy to test that installing and reaching apps works.
+category: Developer Tools
+website: https://github.com/traefik/whoami
+repo: https://github.com/traefik/whoami
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/traefik.svg
+docker:
+  compose: |
+    services:
+      whoami:
+        image: traefik/whoami:latest
+        container_name: sd-whoami
+        restart: unless-stopped
+        ports:
+          - "{{port:8099}}:80"

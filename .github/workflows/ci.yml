@@ -1,0 +1,49 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test server
+      - run: bun run build
+
+  setup:
+    strategy:
+      matrix: { os: [ubuntu-latest, macos-latest] }
+    runs-on: ${{ matrix.os }}
+    defaults: { run: { working-directory: setup } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: setup/go.mod }
+      - run: go vet ./...
+      - run: go test ./...
+      - run: CGO_ENABLED=0 go build -o server-os-setup .
+
+  spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx --yes @redocly/cli@1 lint spec/openapi.yaml
+
+  agent-kit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      # The MCP server must answer initialize + tools/list without a running server.
+      - run: |
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+                        '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | bun run agent/.claude/mcp/server-os.ts | tee out.jsonl
+          # Check the tools/list reply itself (id 2), not a grep for the word "tools": the initialize reply also
+          # contains it (capabilities.tools). Update tools must be present so a rename or drop fails CI.
+          jq -e -s '[.[] | select(.id == 2) | .result.tools[].name] as $n
+            | ($n | length) > 0 and (["server_info","update_status","update_check","update_apply"] - $n | length) == 0' out.jsonl

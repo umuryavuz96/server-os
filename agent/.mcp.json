@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "server-os": {
+      "command": "bun",
+      "args": ["run", ".claude/mcp/server-os.ts"]
+    }
+  }
+}

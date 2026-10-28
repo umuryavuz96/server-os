@@ -1,0 +1,29 @@
+id: n8n
+name: n8n
+description: Workflow automation with 400+ integrations — a self-hosted alternative to Zapier.
+category: Automation
+website: https://n8n.io
+repo: https://github.com/n8n-io/n8n
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/n8n.svg
+setup: |
+  Create the owner account with n8n's setup API (only works once, on a fresh install):
+    curl -X POST <local url>/rest/owner/setup -H 'Content-Type: application/json' \
+      -d '{"email":"<owner email or owner@example.com>","firstName":"<owner>","lastName":"Owner","password":"<admin_password>"}'
+  The password needs 8+ characters with a digit and an upper-case letter (new_secret length 24 almost always has both; check).
+  Set N8N_DIAGNOSTICS_ENABLED=false and N8N_PERSONALIZATION_ENABLED=false in compose, then `up -d`.
+  Check: POST <local url>/rest/login with {"emailOrLdapLoginId": "<email>", "password": "…"} → 200.
+docker:
+  compose: |
+    services:
+      n8n:
+        image: docker.n8n.io/n8nio/n8n:latest
+        container_name: sd-n8n
+        restart: unless-stopped
+        environment:
+          TZ: "{{tz}}"
+          GENERIC_TIMEZONE: "{{tz}}"
+          N8N_SECURE_COOKIE: "false"
+        ports:
+          - "{{port:5679}}:5678"
+        volumes:
+          - "{{data}}:/home/node/.n8n"

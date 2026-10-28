@@ -1,0 +1,28 @@
+id: syncthing
+name: Syncthing
+description: Continuous peer-to-peer file synchronisation between your devices — no cloud in the middle.
+category: File Transfer & Synchronization
+website: https://syncthing.net
+repo: https://github.com/syncthing/syncthing
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/syncthing.svg
+setup: |
+  The web GUI starts without a password. Set one:
+    docker exec sd-syncthing syncthing cli config gui user set <owner>
+    docker exec sd-syncthing syncthing cli config gui password set <admin_password>
+  Steps for the owner: install Syncthing on the other devices and add this server's device ID (Actions → Show ID).
+docker:
+  compose: |
+    services:
+      syncthing:
+        image: syncthing/syncthing:latest
+        container_name: sd-syncthing
+        restart: unless-stopped
+        environment:
+          PUID: "{{puid}}"
+          PGID: "{{pgid}}"
+        ports:
+          - "{{port:8384}}:8384"
+          - "{{port:22000}}:22000/tcp"
+          - "{{port:22000}}:22000/udp"
+        volumes:
+          - "{{data}}:/var/syncthing"

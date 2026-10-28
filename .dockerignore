@@ -1,0 +1,7 @@
+node_modules
+var
+.git
+.claude
+setup
+web/dist
+*.log

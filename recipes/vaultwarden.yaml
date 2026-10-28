@@ -1,0 +1,30 @@
+id: vaultwarden
+name: Vaultwarden
+description: Lightweight Bitwarden-compatible password manager server. Use it with the official Bitwarden apps.
+category: Password Managers
+website: https://github.com/dani-garcia/vaultwarden
+repo: https://github.com/dani-garcia/vaultwarden
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/vaultwarden.svg
+notes: Bitwarden clients require HTTPS — put it behind Tailscale Serve or your reverse proxy before signing in.
+setup: |
+  Accounts are made in a Bitwarden client (it derives the keys), so the agent can't create one. Instead:
+  - Make an admin token (new_secret admin_token) and set ADMIN_TOKEN to it; set SIGNUPS_ALLOWED to "false"
+    and INVITATIONS_ALLOWED to "true"; set DOMAIN to the app's https address if there is one. `up -d` again.
+  - Invite the owner's email from the admin page API: log in with POST <local url>/admin (form field token),
+    keep the cookie, then POST <local url>/admin/invite with {"email": "<owner email>"}. Without SMTP, the
+    invited address can register directly.
+  Steps for the owner: open the address over HTTPS, "Create account" with that email, then install the Bitwarden app.
+  Report username = the owner's email, secret = admin_token (for the /admin page).
+docker:
+  compose: |
+    services:
+      vaultwarden:
+        image: vaultwarden/server:latest
+        container_name: sd-vaultwarden
+        restart: unless-stopped
+        environment:
+          SIGNUPS_ALLOWED: "true"
+        ports:
+          - "{{port:8222}}:80"
+        volumes:
+          - "{{data}}:/data"

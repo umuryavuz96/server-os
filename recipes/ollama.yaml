@@ -1,0 +1,12 @@
+id: ollama
+name: Ollama
+description: Run large language models locally (Llama, Gemma, Qwen…) behind a simple API. Uses the Mac's GPU when installed with Homebrew.
+category: Artificial Intelligence
+website: https://ollama.com
+repo: https://github.com/ollama/ollama
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/ollama.svg
+brew:
+  formula: ollama
+  service: true
+web:
+  port: 11434

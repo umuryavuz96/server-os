@@ -1,0 +1,16 @@
+id: it-tools
+name: IT Tools
+description: Collection of handy online tools for developers — converters, generators, formatters — running locally.
+category: Developer Tools
+website: https://it-tools.tech
+repo: https://github.com/CorentinTh/it-tools
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/it-tools.svg
+docker:
+  compose: |
+    services:
+      it-tools:
+        image: corentinth/it-tools:latest
+        container_name: sd-it-tools
+        restart: unless-stopped
+        ports:
+          - "{{port:8088}}:80"

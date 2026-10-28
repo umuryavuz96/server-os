@@ -1,0 +1,23 @@
+# Server OS, written by server-os-setup. Your edits are kept: the wizard never overwrites this file.
+# User unit: systemctl --user {status|restart} server-os
+# To keep it running after logout: loginctl enable-linger $USER
+[Unit]
+Description=Server OS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{sd .SourceDir}}
+ExecStart={{sdq .Bun}} run server/index.ts
+Environment={{sdq (printf "SERVER_OS_HOME=%s" .Home)}}
+Environment=PORT={{.Port}}
+Environment={{sdq (printf "HOST=%s" .Host)}}
+Environment={{sdq (printf "PATH=%s" .Path)}}
+Restart=always
+RestartSec=5
+StandardOutput=append:{{sd .LogDir}}/service.out.log
+StandardError=append:{{sd .LogDir}}/service.err.log
+
+[Install]
+WantedBy=default.target

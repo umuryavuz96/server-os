@@ -1,0 +1,8 @@
+node_modules/
+web/dist/
+var/
+.claude/worktrees/
+
+# Private notes (live outside the repo in ~/projects/server-os-private)
+REQUIREMENTS.md
+docs/OPEN-SOURCE-PLAN.md

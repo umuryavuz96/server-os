@@ -1,0 +1,31 @@
+id: gitea
+name: Gitea
+description: Painless self-hosted Git service with issues, pull requests, packages and CI (Actions).
+category: Software Development
+website: https://about.gitea.com
+repo: https://github.com/go-gitea/gitea
+logo: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/gitea.svg
+setup: |
+  Skip the install wizard: add to the service's environment
+    GITEA__security__INSTALL_LOCK: "true"
+    GITEA__database__DB_TYPE: sqlite3
+    GITEA__server__ROOT_URL: <the app's address>/
+    GITEA__service__DISABLE_REGISTRATION: "true"
+  then `up -d` again and wait for it to answer. Create the admin:
+    docker exec -u git sd-gitea gitea admin user create --admin --username <owner> --email <owner email or owner@localhost> --password <admin_password> --must-change-password=false
+  Check: curl -u <owner>:<password> <local url>/api/v1/user → 200.
+docker:
+  compose: |
+    services:
+      gitea:
+        image: gitea/gitea:latest
+        container_name: sd-gitea
+        restart: unless-stopped
+        environment:
+          USER_UID: "{{puid}}"
+          USER_GID: "{{pgid}}"
+        ports:
+          - "{{port:3004}}:3000"
+          - "{{port:2222}}:22"
+        volumes:
+          - "{{data}}:/data"
