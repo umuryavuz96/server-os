@@ -4,7 +4,7 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { api, toast } from "../../store";
 
-type HV = { available: boolean; voice: string; enabled: boolean; running: boolean; state: string; detail: string | null; heard: string | null; reply: string | null; volume: number; followUp: number };
+type HV = { available: boolean; voice: string; enabled: boolean; running: boolean; state: string; detail: string | null; heard: string | null; reply: string | null; volume: number; followUp: number; language?: string };
 const hv = ref<HV | null>(null), busy = ref(false), vol = ref(10);
 type Vs = { voices: string[]; cloud: string[]; labels: Record<string, string>; cloudEnabled: boolean };
 const vs = ref<Vs | null>(null);
@@ -45,6 +45,15 @@ const dot = computed(() => (!hv.value?.enabled ? "" : hv.value.state === "offlin
           <option v-for="v in cloud" :key="v" :value="v" :disabled="!vs.cloudEnabled">{{ name(v) }}{{ vs.cloudEnabled ? "" : " (off)" }}</option>
         </optgroup>
         <optgroup label="Local (on this server)"><option v-for="v in local" :key="v" :value="v">{{ name(v) }}</option></optgroup>
+      </select>
+    </label>
+    <label class="hv-vol hv-pick">
+      <span>You speak</span>
+      <select :value="hv.language ?? ''" :disabled="busy" aria-label="Language you speak" @change="set({ language: ($event.target as HTMLSelectElement).value })">
+        <option value="">Same as the voice</option>
+        <option value="en">English</option>
+        <option value="tr">Türkçe</option>
+        <option value="auto">Auto-detect</option>
       </select>
     </label>
     <label v-if="hv.enabled" class="hv-vol">

@@ -15,8 +15,8 @@ const STATUS = join(DIR, "status.json");
 const SESSION = HV.session ?? "house-voice";
 const TMUX = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"].find(existsSync) ?? "tmux";
 
-export type HouseVoiceSettings = { enabled: boolean; volume: number; followUp: number; threshold: number; voice: string };
-const DEFAULTS: HouseVoiceSettings = { enabled: true, volume: 0.1, followUp: 8, threshold: 0.5, voice: "af_heart" };
+export type HouseVoiceSettings = { enabled: boolean; volume: number; followUp: number; threshold: number; voice: string; language: string };
+const DEFAULTS: HouseVoiceSettings = { enabled: true, volume: 0.1, followUp: 8, threshold: 0.5, voice: "af_heart", language: "" };
 
 const readJson = <T>(p: string): T | null => { try { return JSON.parse(readFileSync(p, "utf8")) as T; } catch { return null; } };
 export const houseVoiceAvailable = () => !!DIR && existsSync(join(DIR, "listen.py"));
@@ -51,6 +51,8 @@ export async function setHouseVoice(patch: Partial<HouseVoiceSettings>) {
     followUp: clamp(patch.followUp, 3, 30, old.followUp),
     threshold: clamp(patch.threshold, 0.2, 0.9, old.threshold),
     voice: typeof patch.voice === "string" && /^[\w-]{1,40}$/.test(patch.voice) ? patch.voice : old.voice,
+    // What you speak: "" follows the voice (Turkish for tr- voices), or "en" / "tr" / "auto".
+    language: typeof patch.language === "string" && ["", "en", "tr", "auto"].includes(patch.language) ? patch.language : old.language ?? "",
   };
   writeFileSync(CONFIG, JSON.stringify(next, null, 2) + "\n");
   const up = await running();
