@@ -1,5 +1,16 @@
 import { expect, test } from "bun:test";
-import { catalog, describe, sampleFile, sampleText, wav } from "./voiceShowcase";
+import { catalog, describe, oneAtATime, sampleFile, sampleText, wav } from "./voiceShowcase";
+
+test("samples are made one at a time, and a failure doesn't block the next", async () => {
+  const order: string[] = [];
+  const slow = oneAtATime(async () => { order.push("a:start"); await Bun.sleep(20); order.push("a:end"); return "a"; });
+  const failing = oneAtATime(async () => { order.push("b"); throw new Error("no sound"); });
+  const quick = oneAtATime(async () => { order.push("c"); return "c"; });
+  expect(await slow).toBe("a");
+  await expect(failing).rejects.toThrow("no sound");
+  expect(await quick).toBe("c");
+  expect(order).toEqual(["a:start", "a:end", "b", "c"]);
+});
 
 test("voices get a name, language, engine and cost from their id", () => {
   expect(describe("af_heart")).toMatchObject({ name: "Heart", lang: "en", engine: "Kokoro", accent: "American", cloud: false, cost: "free" });

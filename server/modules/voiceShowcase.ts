@@ -50,8 +50,16 @@ export function wav(pcm: Uint8Array, rate = 24000): Uint8Array {
   const out = new Uint8Array(44 + pcm.length); out.set(new Uint8Array(h.buffer)); out.set(pcm, 44); return out;
 }
 
+// The speech models share the Mac's RAM, so samples are made one at a time whatever voice they are for; a second press
+// of the same voice joins the request already running.
+let queue: Promise<unknown> = Promise.resolve();
+export function oneAtATime<T>(job: () => Promise<T>): Promise<T> {
+  const next = queue.then(job, job);
+  queue = next.catch(() => {});
+  return next;
+}
 const inflight = new Map<string, Promise<string | { error: string; status: number }>>();
-/** Path of the voice's cached sample, making it first if needed (one request at a time per voice). */
+/** Path of the voice's cached sample, making it first if needed. */
 export async function sampleFile(voice: string): Promise<string | { error: string; status: number }> {
   if (!safe(voice)) return { error: "Unknown voice", status: 400 };
   if (existsSync(wavPath(voice))) return wavPath(voice);
@@ -61,7 +69,8 @@ export async function sampleFile(voice: string): Promise<string | { error: strin
   if (d.cloud && !cloudEnabled()) return { error: "Cloud voices are switched off", status: 409 };
   const running = inflight.get(voice);
   if (running) return running;
-  const job = (async () => {
+  const job = oneAtATime(async () => {
+    if (existsSync(wavPath(voice))) return wavPath(voice); // made while this one waited its turn
     const text = sampleText(d.lang);
     const t0 = performance.now();
     const r = await speak(text, voice, 1.0);
@@ -74,7 +83,7 @@ export async function sampleFile(voice: string): Promise<string | { error: strin
     writeFileSync(wavPath(voice), wav(pcm));
     writeFileSync(metaPath(voice), JSON.stringify({ ms, seconds: Math.round(seconds * 100) / 100, rtf: Math.round((ms / 1000 / seconds) * 100) / 100, chars: text.length } satisfies Meta));
     return wavPath(voice);
-  })().finally(() => inflight.delete(voice));
+  }).finally(() => inflight.delete(voice));
   inflight.set(voice, job);
   return job;
 }

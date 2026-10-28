@@ -25,22 +25,29 @@ import DashboardsView from "./views/DashboardsView.vue";
 import LogsView from "./views/LogsView.vue";
 import PortsView from "./views/PortsView.vue";
 import VoiceView from "./views/VoiceView.vue";
+import Icon from "./components/Icon.vue";
+import type { IconName } from "./icons";
 import PermissionsView from "./views/PermissionsView.vue";
 import ScreenView from "./views/ScreenView.vue";
-import VoicesView from "./views/VoicesView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import { loadPerms, missingRequired } from "./permissions";
 import InstallTray from "./components/InstallTray.vue";
 import RemoteScreen from "./components/RemoteScreen.vue";
 import { sess } from "./screen/session";
 
-const PAGES = ["overview", "dashboards", "apps", "discover", "jobs", "alerts", "logs", "bots", "voice", "voices", "webhooks", "storage", "ports", "permissions", "screen", "settings"] as const;
+const PAGES = ["overview", "dashboards", "apps", "discover", "jobs", "alerts", "logs", "bots", "voice", "webhooks", "storage", "ports", "permissions", "screen", "settings"] as const;
 type Page = (typeof PAGES)[number];
+// Old links keep working: #voices (the Voices page, merged into Voice 2026-10-28) opens Voice.
+const ALIAS: Record<string, Page> = { voices: "voice" };
 const page = ref<Page>("overview");
 const navOpen = ref(false);
 // Tile and card pages use the whole window width; list pages and forms keep a readable width (see Adaptive page widths in style.css).
 const WIDE: Page[] = ["overview", "dashboards", "discover", "storage"];
-const readHash = () => { const h = location.hash.slice(1).split("?")[0] as Page; page.value = PAGES.includes(h) ? h : "overview"; navOpen.value = false; };
+const readHash = () => {
+  const h = location.hash.slice(1).split("?")[0];
+  if (h in ALIAS) { location.replace("#" + ALIAS[h]); return; }
+  page.value = PAGES.includes(h as Page) ? (h as Page) : "overview"; navOpen.value = false;
+};
 const now = ref(Date.now());
 let clock: ReturnType<typeof setInterval>;
 // Optional integrations (bot manager, storage service, watched webhooks) only show when the server has them.
@@ -51,7 +58,7 @@ const initials = computed(() => {
   const words = serverName.value.split(/[^A-Za-z0-9]+/).filter(Boolean);
   return (words.find((w) => w.length <= 3 && /\d/.test(w) && /[A-Za-z]/.test(w)) ?? words.slice(0, 2).map((w) => w[0]).join("")).toUpperCase().slice(0, 3) || "SD";
 });
-const shown = (id: string) => !caps.value || (id === "bots" ? caps.value.has("bots") : id === "voice" ? caps.value.has("voiceSession") : id === "storage" ? caps.value.has("storage") : id === "permissions" ? caps.value.has("permissions") : id === "screen" ? caps.value.has("screen") : id === "webhooks" ? (S.hooks?.length ?? 0) > 0 : true);
+const shown = (id: string) => !caps.value || (id === "bots" ? caps.value.has("bots") : id === "voice" ? caps.value.has("voiceSession") || caps.value.has("houseVoice") : id === "storage" ? caps.value.has("storage") : id === "permissions" ? caps.value.has("permissions") : id === "screen" ? caps.value.has("screen") : id === "webhooks" ? (S.hooks?.length ?? 0) > 0 : true);
 const screenName = ref("Mac screen");
 const screenLive = computed(() => sess.phase === "connected");
 onMounted(async () => { try { const i = await api<{ name: string; platform?: string; capabilities: string[] }>("/info"); caps.value = new Set(i.capabilities); screenName.value = i.platform === "darwin" ? "Mac screen" : "Server screen"; serverName.value = i.name; if (caps.value.has("permissions")) void loadPerms(); } catch { /* show everything */ } });
@@ -65,29 +72,16 @@ const running = computed(() => Object.values(S.apps).filter((a) => a.state !== "
 const botsLive = computed(() => (S.botSessions ?? []).filter((b) => b.running).length);
 const diskPct = computed(() => (S.system?.internal ? Math.round(100 - (S.system.internal.freeGB / S.system.internal.totalGB) * 100) : null));
 const upDays = computed(() => (S.system?.boot ? Math.floor((now.value / 1000 - S.system.boot) / 86400) : null));
-const ICON: Record<string, string> = {
-  overview: "M3 13h8V3H3zM13 21h8v-8h-8zM3 21h8v-6H3zM13 11h8V3h-8z",
-  apps: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
-  dashboards: "M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z",
-  discover: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM16 8l-2 6-6 2 2-6z",
-  jobs: "M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
-  logs: "M4 6h16M4 10h16M4 14h10M4 18h7",
-  alerts: "M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
-  bots: "M12 8V4H8M4 8h16v12H4zM9 13h.01M15 13h.01",
-  voice: "M12 3v18M8 8v8M4 11v2M16 6v12M20 10v4",
-  voices: "M5 4h14v16H5zM9 9h6M9 13h6M9 17h3",
-  webhooks: "M18 16.1A4 4 0 1 0 14 20H8M6 8a4 4 0 1 1 6.9 2.7L9 17M15 7.1A4 4 0 1 1 17 15",
-  ports: "M4 7h16M4 12h16M4 17h16M8 4v6M14 9v6M18 14v6",
-  permissions: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4",
-  screen: "M3 4h18v12H3zM8 20h8M12 16v4",
-  storage: "M3 5a9 3 0 1 0 18 0 9 3 0 1 0-18 0M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0",
-  settings: "M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4",
+// Sidebar icons: Lucide, by name (web/src/icons.ts), one set with the rest of the panel since 2026-10-28.
+const ICON: Record<string, IconName> = {
+  overview: "layout-dashboard", apps: "blocks", dashboards: "layout-grid", discover: "compass", jobs: "clock", logs: "scroll-text", alerts: "bell",
+  bots: "bot", voice: "audio-lines", webhooks: "webhook", ports: "network", permissions: "shield-check", screen: "monitor", storage: "database", settings: "sliders",
 };
 const updateBadge = computed(() => S.update?.state === "failed" ? "!" : S.update && !["idle", "checking"].includes(S.update.state) ? "…" : S.update?.updateAvailable ? "new" : "");
 const NAV = [
   { title: "", items: [["overview", "Overview"], ["dashboards", "Dashboards"], ["apps", "Apps"], ["discover", "Discover"]] },
   { title: "Automation", items: [["jobs", "Jobs"], ["alerts", "Alerts"], ["logs", "Logs"], ["webhooks", "Webhooks"]] },
-  { title: "Agents", items: [["voice", "Voice"], ["voices", "Voices"], ["bots", "Bots"]] },
+  { title: "Agents", items: [["voice", "Voice"], ["bots", "Bots"]] },
 ] as const;
 </script>
 
@@ -98,13 +92,13 @@ const NAV = [
       <div class="nav-brand">
         <div class="logo" aria-hidden="true">{{ initials }}</div>
         <div><div class="nav-t">Server OS</div><div class="nav-s"><span class="live" :class="{ off: !S.connected }"></span>{{ S.connected ? "live" : "reconnecting" }}<template v-if="upDays != null"> · up {{ upDays }} d</template></div></div>
-        <button type="button" class="nav-x" aria-label="Close menu" @click="navOpen = false">✕</button>
+        <button type="button" class="nav-x" aria-label="Close menu" @click="navOpen = false"><Icon name="x" /></button>
       </div>
       <nav>
         <div v-for="g in NAV.filter((x) => x.items.some(([i]) => shown(i)))" :key="g.title" class="nav-g">
           <div v-if="g.title" class="nav-h">{{ g.title }}</div>
           <a v-for="[id, label] in g.items.filter(([i]) => shown(i))" :key="id" :href="'#' + id" class="nav-i" :aria-current="page === id ? 'page' : undefined">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="ICON[id]" /></svg>
+            <Icon :name="ICON[id]" :size="17" />
             <span>{{ label }}</span>
             <span v-if="id === 'apps'" class="nav-c">{{ running }}</span>
             <span v-else-if="id === 'discover' && installing" class="nav-c busy" :title="`${installing} installing`">{{ installing }}</span>
@@ -116,25 +110,25 @@ const NAV = [
         <div class="nav-g">
           <div class="nav-h">System</div>
           <a href="#ports" class="nav-i" :aria-current="page === 'ports' ? 'page' : undefined">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="ICON.ports" /></svg>
+            <Icon :name="ICON.ports" :size="17" />
             <span>Ports</span><span v-if="portIssues" class="nav-c bad">{{ portIssues }}</span>
           </a>
           <a v-if="shown('permissions')" href="#permissions" class="nav-i" :aria-current="page === 'permissions' ? 'page' : undefined">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="ICON.permissions" /></svg>
+            <Icon :name="ICON.permissions" :size="17" />
             <span>Permissions</span><span v-if="missingRequired.length" class="nav-c bad">{{ missingRequired.length }}</span>
           </a>
           <a v-if="shown('screen')" href="#screen" class="nav-i" :aria-current="page === 'screen' ? 'page' : undefined">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="ICON.screen" /></svg>
+            <Icon :name="ICON.screen" :size="17" />
             <span>{{ screenName }}</span><span v-if="screenLive" class="nav-c on" title="Screen session is live">live</span>
           </a>
           <a href="#settings" class="nav-i" :aria-current="page === 'settings' ? 'page' : undefined">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="ICON.settings" /></svg>
+            <Icon :name="ICON.settings" :size="17" />
             <span>Settings</span><span v-if="updateBadge" class="nav-c" :class="updateBadge === '!' ? 'bad' : 'on'" :title="updateBadge === 'new' ? `Server OS ${S.update?.latest?.tag} is available` : undefined">{{ updateBadge }}</span>
           </a>
         </div>
         <div v-if="shown('storage')" class="nav-g">
           <a href="#storage" class="nav-i" :aria-current="page === 'storage' ? 'page' : undefined">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="ICON.storage" /></svg>
+            <Icon :name="ICON.storage" :size="17" />
             <span>Storage</span><span v-if="diskPct != null" class="nav-c" :class="{ bad: diskPct >= 90 }">{{ diskPct }}%</span>
           </a>
         </div>
@@ -149,7 +143,7 @@ const NAV = [
 
     <div class="content" :class="{ wide: WIDE.includes(page) }" :data-page="page">
       <div class="topbar">
-        <button type="button" class="btn nav-btn" aria-label="Open menu" @click="navOpen = true">☰</button>
+        <button type="button" class="btn nav-btn" aria-label="Open menu" @click="navOpen = true"><Icon name="menu" /></button>
         <div class="logo sm" aria-hidden="true">{{ initials }}</div>
       </div>
       <div v-if="!S.connected" class="err">Reconnecting to the server…</div>
@@ -162,8 +156,7 @@ const NAV = [
         <AlertsView v-else-if="page === 'alerts'" />
         <LogsView v-else-if="page === 'logs'" />
         <BotsView v-else-if="page === 'bots'" />
-        <VoiceView v-else-if="page === 'voice'" />
-        <VoicesView v-else-if="page === 'voices'" />
+        <VoiceView v-else-if="page === 'voice'" :session="!caps || caps.has('voiceSession')" />
         <HooksView v-else-if="page === 'webhooks'" />
         <StorageView v-else-if="page === 'storage'" />
         <PortsView v-else-if="page === 'ports'" />
