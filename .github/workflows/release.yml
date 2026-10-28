@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 } # tags, for the compare link in the release notes
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-go@v5
         with: { go-version-file: setup/go.mod }
@@ -28,9 +29,13 @@ jobs:
       - name: Sign SHA256SUMS
         env: { SERVER_OS_SIGNING_KEY: "${{ secrets.SERVER_OS_SIGNING_KEY }}" }
         run: scripts/sign-release.sh dist
+      # The release body is the matching CHANGELOG.md section + the compare link (what the panel's update card shows).
+      - run: scripts/release-notes.sh "$GITHUB_REF_NAME" > dist/RELEASE_NOTES.md
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
-          generate_release_notes: true
+          files: |
+            dist/*
+            !dist/RELEASE_NOTES.md
+          body_path: dist/RELEASE_NOTES.md
           # v1.2.0-beta.1 and the like are prereleases: only servers on the beta channel take them.
           prerelease: ${{ contains(github.ref_name, '-') }}
