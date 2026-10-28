@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Added
+- Git checkouts (developer mode) get a working Update button: it fetches, fast-forwards to origin, installs dependencies if the manifests changed, rebuilds the panel, restarts through the service manager and rolls the checkout back if the new commit doesn't come up. It refuses, with the reason shown on the card, when the branch doesn't track origin, tracked files have local changes, or local commits aren't on GitHub. Nothing is stashed, discarded or forced.
+
+### Changed
+- GitHub release notes are now the matching CHANGELOG section plus the compare link, so the update card shows what changed.
+
 ## [0.1.1] - 2026-10-28
 
 ### Fixed

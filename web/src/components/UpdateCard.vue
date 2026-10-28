@@ -30,10 +30,13 @@ const notes = computed(() => {
 });
 const showNotes = ref(false);
 
+const isDev = computed(() => u.value?.mode === "git");
 const working = ref(false);
 async function update() {
   const l = u.value?.latest;
-  if (!l || !window.confirm(`Update Server OS ${u.value!.current} → ${l.tag}?\n\nThe server restarts (about a minute). If the new version doesn't come up, it switches back by itself.`)) return;
+  if (!l) return;
+  const what = isDev.value ? `Fast-forward this git checkout (${u.value!.dev?.upstream ?? "origin"}, ${u.value!.dev?.behind ?? 0} new commit(s)) and rebuild` : `Update Server OS ${u.value!.current} → ${l.tag}`;
+  if (!window.confirm(`${what}?\n\nThe server restarts (about a minute). If the new version doesn't come up, it switches back by itself.`)) return;
   working.value = true;
   try { S.update = await api<UpdateStatus>("/update/apply", { method: "POST", body: {} }); } catch (e) { toast((e as Error).message); }
   working.value = false;
@@ -73,10 +76,10 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
       </div>
       <p v-if="u.blocked" class="upd-block">{{ u.blocked }}</p>
       <div class="upd-act">
-        <button v-if="!u.blocked" type="button" class="btn primary" :disabled="working || !u.canApply" @click="update">{{ working ? "Starting…" : u.last && !u.last.ok && u.last.to === u.latest.version ? `Try ${u.latest.tag} again` : `Update to ${u.latest.tag}` }}</button>
+        <button v-if="!u.blocked" type="button" class="btn primary" :disabled="working || !u.canApply" @click="update">{{ working ? "Starting…" : u.last && !u.last.ok && u.last.to === u.latest.version ? `Try ${u.latest.tag} again` : `Update to ${u.latest.tag}` }}<template v-if="isDev && !working"> (developer checkout)</template></button>
         <button v-if="props.always" type="button" class="btn" :disabled="checking" @click="check">{{ checking ? "Checking…" : "Check again" }}</button>
         <a v-if="u.latest.url" class="btn ghost" :href="u.latest.url" target="_blank" rel="noopener noreferrer">On GitHub</a>
-        <span class="hint">Signed release · checked {{ ago(u.checkedAt ? u.checkedAt / 1000 : null) }}</span>
+        <span class="hint">{{ isDev ? `Developer checkout${u.dev?.upstream ? ` · ${u.dev.upstream}` : ""}` : "Signed release" }} · checked {{ ago(u.checkedAt ? u.checkedAt / 1000 : null) }}</span>
       </div>
     </template>
 
@@ -93,7 +96,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
       <p v-else-if="u.last && recent && u.last.ok" class="hint">{{ u.last.from }} → {{ u.last.to }}, {{ ago(u.last.at / 1000) }}. The previous version is kept for rollback.</p>
       <p v-else-if="u.last && recent" class="hint">{{ u.last.reason }}. {{ u.last.rolledBack ? `Back on ${u.last.from}, nothing lost.` : "The rollback did not come up either — check logs/update.log." }}</p>
       <p v-else class="hint">Up to date<template v-if="u.checkedAt"> · checked {{ ago(u.checkedAt / 1000) }}</template>.<template v-if="u.checkError"> {{ u.checkError }}</template></p>
-      <p v-if="props.always && u.blocked && u.mode !== 'release'" class="upd-block">{{ u.blocked }}</p>
+      <p v-if="props.always && u.blocked && u.mode !== 'release' && !u.updateAvailable" class="upd-block">{{ u.blocked }}</p>
     </template>
 
     <div v-if="props.always && !busy && !(u.updateAvailable && u.latest)" class="upd-act">

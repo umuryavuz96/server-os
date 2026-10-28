@@ -12,6 +12,8 @@ import { basename, join } from "node:path";
 export interface UpdateJob {
   home: string; from: string; to: string; fromDir: string; toDir: string; health: string; timeoutMs: number;
   restart: string[]; startedAt: number;
+  /** Developer-mode (git checkout) update: how to put the working tree back if the new commit doesn't come up. */
+  git?: { repo: string; prevSha: string; rollback: string[][] };
 }
 
 const job = JSON.parse(readFileSync(process.argv[2], "utf8")) as UpdateJob;
@@ -70,14 +72,19 @@ const bad = await waitHealthy(job.to);
 if (!bad) {
   say(`ok: ${job.to} is healthy`);
   result({ ok: true });
-  prune([job.toDir, job.fromDir]);
+  if (!job.git) prune([job.toDir, job.fromDir]);
 } else {
   say(`failed: ${bad}; rolling back to ${job.from}`);
-  link(job.fromDir);
+  if (job.git) {
+    for (const cmd of job.git.rollback) {
+      const p = Bun.spawn(cmd, { cwd: job.git.repo, stdout: "pipe", stderr: "pipe", env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "NODE_ENV")) as Record<string, string> });
+      if ((await p.exited) !== 0) say(`rollback step failed: ${cmd.join(" ")}: ${(await new Response(p.stderr).text()).trim().slice(-300)}`);
+    }
+  } else link(job.fromDir);
   await restart();
   const back = await waitHealthy(job.from);
   say(back ? `rollback did not come up: ${back}` : `rolled back: ${job.from} is healthy`);
   result({ ok: false, reason: bad, rolledBack: !back, ...(back ? { rollbackError: back } : {}) });
-  rmSync(job.toDir, { recursive: true, force: true });
+  if (!job.git) rmSync(job.toDir, { recursive: true, force: true });
 }
 try { unlinkSync(process.argv[2]); } catch { /* gone */ }

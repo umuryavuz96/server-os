@@ -29,6 +29,7 @@ export interface ClaudeJob { pid: number; kind: "bot" | "headless" | "interactiv
 /** The self-updater (server/modules/update.ts), pushed as the `update` slice. */
 export interface UpdateStatus {
   current: string; mode: "release" | "git" | "homebrew" | "docker" | "unmanaged"; service: string | null;
+  dev: { branch: string | null; upstream: string | null; behind: number } | null;
   latest: { tag: string; version: string; name: string; notes: string; prerelease: boolean; publishedAt: string | null; url: string | null; signed: boolean } | null;
   updateAvailable: boolean; canApply: boolean; blocked: string | null; checkedAt: number | null; checkError: string | null;
   state: "idle" | "checking" | "downloading" | "verifying" | "installing" | "restarting" | "failed"; detail: string; error: string | null;

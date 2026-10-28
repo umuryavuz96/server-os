@@ -4,7 +4,8 @@
 // (detached) waits for /api/v1/health and switches back if the new version doesn't come up.
 // User data (config/, data/, logs/, apps/ …) lives in <home>, never in a version folder; migrations are the
 // CREATE … IF NOT EXISTS schemas every module registers, run when the database opens on start.
-// Git checkouts, Homebrew and Docker installs can check but never apply. State: <home>/data/update.json.
+// Git checkouts (developer mode) may fast-forward to origin when that is lossless (server/modules/devUpdate.ts);
+// Homebrew and Docker installs can check but never apply. State: <home>/data/update.json.
 import { spawn } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -13,6 +14,7 @@ import { audit, logEvent, type Trace } from "../core/logger";
 import { setSlice } from "../store";
 import { nextRun } from "../ops";
 import { bundleName, compareSemver, detectInstallMode, modeBlock, pickRelease, SIG, SUMS, verifyBundle, type Channel, type GhRelease, type InstallMode, type Release } from "./release";
+import { depsChanged, devState, rollbackSteps, type DevState } from "./devUpdate";
 import type { UpdateJob } from "../updateHelper";
 
 export type AutoMode = "off" | "notify" | "nightly";
@@ -73,8 +75,27 @@ export function serviceManager(env = process.env): { kind: "launchd" | "systemd"
   }
   return null;
 }
-const restartCmd = (s: NonNullable<ReturnType<typeof serviceManager>>) =>
-  s.kind === "launchd" ? ["launchctl", "kickstart", "-k", `gui/${process.getuid?.() ?? 501}/${s.name}`] : ["systemctl", "--user", "restart", s.name];
+/** SERVER_OS_TEST_RESTART (a JSON argv array) replaces the service-manager call; used by the end-to-end test only. */
+const testRestart = (): string[] | null => { try { const a = JSON.parse(process.env.SERVER_OS_TEST_RESTART ?? "null"); return Array.isArray(a) && a.every((x) => typeof x === "string") ? a : null; } catch { return null; } };
+const restartCmd = (s: NonNullable<ReturnType<typeof serviceManager>>) => testRestart() ??
+  (s.kind === "launchd" ? ["launchctl", "kickstart", "-k", `gui/${process.getuid?.() ?? 501}/${s.name}`] : ["systemctl", "--user", "restart", s.name]);
+
+// ---------- developer mode (git checkout) ----------
+let devCache: { at: number; v: DevState } | null = null;
+/** Cached ~5 s: local git commands only, and updateStatus() runs on every push. */
+function dev(fresh = false): DevState {
+  if (!fresh && devCache && Date.now() - devCache.at < 5_000) return devCache.v;
+  devCache = { at: Date.now(), v: devState(SOURCE) };
+  return devCache.v;
+}
+async function gitFetch(): Promise<string | null> {
+  const p = Bun.spawn(["git", "-C", SOURCE, "fetch", "--quiet", "origin"], { stdout: "pipe", stderr: "pipe", env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+  const t = setTimeout(() => p.kill(), 60_000);
+  const err = await new Response(p.stderr).text();
+  clearTimeout(t);
+  devCache = null;
+  return (await p.exited) === 0 ? null : (err.trim().split("\n").pop() ?? "git fetch failed");
+}
 
 // ---------- status ----------
 let phase: Phase = "idle", detail = "", error: string | null = null, busy = false;
@@ -84,11 +105,12 @@ export function updateStatus() {
   const mode = installMode(), svc = serviceManager();
   const latest = saved.check ? pickRelease(saved.check.releases, saved.settings.channel) : null;
   const newer = !!latest && compareSemver(latest.tag, VERSION) === 1;
-  const block = modeBlock(mode) ?? (svc ? null : "Server OS isn't running as a service (launchd / systemd), so it can't restart itself. Install it with install/install.sh.")
-    ?? (latest && newer && !latest.signed ? `Release ${latest.tag} isn't signed; it can't be installed automatically.` : null);
+  const dv = mode === "git" && newer ? dev() : null;
+  const block = (mode === "git" ? dv?.reason ?? null : modeBlock(mode)) ?? (svc ? null : "Server OS isn't running as a service (launchd / systemd), so it can't restart itself. Install it with install/install.sh.")
+    ?? (mode !== "git" && latest && newer && !latest.signed ? `Release ${latest.tag} isn't signed; it can't be installed automatically.` : null);
   const finishing = existsSync(JOB());
   return {
-    current: VERSION, mode, service: svc ? `${svc.kind}:${svc.name}` : null,
+    current: VERSION, mode, dev: dv ? { branch: dv.branch ?? null, upstream: dv.upstream ?? null, behind: dv.behind ?? 0 } : null, service: svc ? `${svc.kind}:${svc.name}` : null,
     latest: latest as Release | null, updateAvailable: newer, canApply: newer && !block && !busy && !finishing, blocked: block,
     checkedAt: saved.check?.at ?? null, checkError: saved.check?.error ?? null,
     state: finishing && phase === "idle" ? "restarting" as Phase : phase, detail: finishing && phase === "idle" ? "Waiting for the new version to answer" : detail, error,
@@ -110,6 +132,7 @@ export async function checkForUpdate(o: { manual?: boolean } = {}): Promise<Upda
   if (o.manual) lastManual = now;
   if (busy) return updateStatus();
   const was = phase; if (was === "idle" || was === "failed") step("checking");
+  if (installMode() === "git") await gitFetch(); // best effort: offline just means the last fetch is used
   try {
     const headers: Record<string, string> = { Accept: "application/vnd.github+json", "User-Agent": `server-os/${VERSION}`, "X-GitHub-Api-Version": "2022-11-28" };
     if (saved.check?.etag) headers["If-None-Match"] = saved.check.etag;
@@ -139,8 +162,9 @@ async function download(url: string): Promise<Uint8Array> {
   if (!r.ok) throw new Error(`download ${basename(new URL(url).pathname)}: HTTP ${r.status}`);
   return new Uint8Array(await r.arrayBuffer());
 }
-async function sh(cmd: string[], cwd: string, timeoutMs: number): Promise<void> {
-  const p = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe", env: { ...process.env, NODE_ENV: "production" } });
+async function sh(cmd: string[], cwd: string, timeoutMs: number, prod = true): Promise<void> {
+  const { NODE_ENV: _drop, ...rest } = process.env; // a dev checkout builds with dev dependencies, so no production flag
+  const p = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe", env: prod ? { ...process.env, NODE_ENV: "production" } : rest });
   const t = setTimeout(() => p.kill(), timeoutMs);
   const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   clearTimeout(t);
@@ -158,10 +182,12 @@ export function applyUpdate(actor: string, trace?: Trace): { ok: true; to: strin
   const s = updateStatus();
   if (busy || s.state === "restarting") return { ok: false, error: "An update is already running" };
   if (!s.latest || !s.updateAvailable) return { ok: false, error: "Server OS is up to date" };
-  if (s.blocked) return { ok: false, error: s.blocked };
+  // A git checkout is judged after a fresh fetch inside applyDev: the cached reason may be stale (origin moved since the last check).
+  if (s.blocked && !(s.mode === "git" && s.blocked === dev().reason && s.service)) return { ok: false, error: s.blocked };
   const svc = serviceManager()!, rel = s.latest, tag = rel.tag;
   busy = true; error = null;
-  audit(actor, "update.apply", `${VERSION}→${tag}`, "ok", trace);
+  audit(actor, "update.apply", `${VERSION}→${tag}`, "ok", trace, s.mode === "git" ? { mode: "git" } : {});
+  if (s.mode === "git") { applyDev(actor, trace, svc, rel); return { ok: true, to: tag }; }
   void (async () => {
     const versions = join(ROOT, "versions"), staging = join(versions, `.staging-${tag}-${Date.now()}`);
     try {
@@ -207,6 +233,49 @@ export function applyUpdate(actor: string, trace?: Trace): { ok: true; to: strin
     }
   })();
   return { ok: true, to: tag };
+}
+
+/** Developer-mode apply: fetch, fast-forward to the upstream head, install deps if the manifests changed, build the
+ *  web panel, then hand the restart + health check (+ git rollback) to the same detached helper as a release update. */
+function applyDev(actor: string, trace: Trace | undefined, svc: NonNullable<ReturnType<typeof serviceManager>>, rel: Release) {
+  void (async () => {
+    let prev: string | undefined, merged = false, deps = false;
+    const bun = process.execPath;
+    const fail = async (msg: string) => {
+      if (merged && prev) for (const c of rollbackSteps(prev, bun, deps)) { try { await sh(c, SOURCE, 600_000, false); } catch (e) { logEvent("warn", `dev update rollback step failed: ${String(e)}`); } }
+      error = msg;
+      audit(actor, "update.result", `${VERSION}→${rel.tag}`, "failed", trace, { reason: msg, stage: phase, mode: "git" });
+      saved.last = { ok: false, from: VERSION, to: rel.version, at: Date.now(), reason: msg, rolledBack: merged && !!prev };
+      save(); busy = false; step("failed", msg);
+    };
+    try {
+      step("downloading", "Fetching from GitHub");
+      const fe = await gitFetch();
+      if (fe) throw new Error(`git fetch failed: ${fe}`);
+      step("verifying", "Checking the checkout can fast-forward");
+      const d = dev(true);
+      if (!d.ok) throw new Error(d.reason ?? "The checkout can't be updated");
+      prev = d.head;
+      step("installing", `Fast-forwarding ${d.branch} to ${d.target!.slice(0, 7)}`);
+      await sh(["git", "merge", "--ff-only", d.target!], SOURCE, 60_000, false);
+      merged = true; devCache = null;
+      deps = depsChanged(SOURCE, prev!, d.target!);
+      if (deps) { step("installing", "Installing dependencies"); await sh([bun, "install"], SOURCE, 600_000, false); }
+      step("installing", "Building the web panel");
+      await sh([bun, "run", "build"], SOURCE, 600_000, false);
+      const to = (JSON.parse(readFileSync(join(SOURCE, "package.json"), "utf8")) as { version?: string }).version ?? rel.version;
+      const job: UpdateJob = { home: ROOT, from: VERSION, to, fromDir: SOURCE, toDir: SOURCE, health: `http://${HEALTH_HOST}:${PORT}/api/v1/health`,
+        timeoutMs: Number(process.env.SERVER_OS_UPDATE_TIMEOUT_MS) || 45_000, restart: restartCmd(svc), startedAt: Date.now(),
+        git: { repo: SOURCE, prevSha: prev!, rollback: rollbackSteps(prev!, bun, deps) } };
+      mkdirSync(dir("data"), { recursive: true });
+      writeFileSync(JOB(), JSON.stringify(job, null, 2));
+      step("restarting", `Restarting into ${rel.tag}`);
+      logEvent("info", `update ${VERSION} → ${rel.tag}: dev checkout ${prev!.slice(0, 7)} → ${d.target!.slice(0, 7)}`, { from: VERSION, to: rel.tag, mode: "git" }, trace);
+      const helper = [bun, join(SOURCE, "server", "updateHelper.ts"), JOB()];
+      const argv = svc.kind === "systemd" ? ["systemd-run", "--user", "--collect", "--quiet", `--unit=server-os-update-${Date.now()}`, ...helper] : helper;
+      spawn(argv[0], argv.slice(1), { detached: true, stdio: "ignore", cwd: ROOT }).unref();
+    } catch (e) { await fail((e as Error).message); }
+  })();
 }
 
 /** What the helper wrote after the restart: shown on the panel and audited once, by whichever version is running. */
