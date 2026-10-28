@@ -6,3 +6,7 @@ var/
 # Private notes (live outside the repo in ~/projects/server-os-private)
 REQUIREMENTS.md
 docs/OPEN-SOURCE-PLAN.md
+
+# Launch-video tooling (local only)
+brag-output/
+.claude/skills/brag/
