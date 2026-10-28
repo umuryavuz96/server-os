@@ -19,7 +19,7 @@ Live panel · app on/off switches · jobs · alerts · a root [Claude Code](http
 
 </div>
 
-> **Early preview.** Server OS runs a real home server today, but expect rough edges and breaking changes before 1.0. **macOS is the supported platform; Linux is experimental and untested.**
+> **Early preview.** Server OS runs a real home server today, but expect rough edges and breaking changes before 1.0. **macOS is the main platform; Linux is experimental** (the installer and service are tested on Ubuntu 24.04 arm64).
 
 ## Why Server OS
 
@@ -195,7 +195,7 @@ The full page: [`overview-full.png`](docs/assets/static/overview-full.png). Capt
 
 ## Install
 
-**macOS** is the supported platform. **Linux is experimental and untested**; expect to fix things.
+**macOS** is the supported platform. **Linux is experimental**: the one-line installer, signed release check, systemd user service and updater are tested on a fresh Ubuntu 24.04 (arm64). Run `sudo loginctl enable-linger $USER` so the service survives logout, and run the installer from a terminal (it asks questions).
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/umuryavuz96/server-os/main/install/install.sh | sh

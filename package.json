@@ -27,7 +27,7 @@
     "vue": "3",
     "vue-tsc": "2"
   },
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "bin": {
     "server-os": "server/cli.ts"

@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [0.1.1] - 2026-10-28
+
+### Fixed
+- Linux: the installer puts the `server-os` command on PATH (`~/.local/bin`).
+- Linux: no false "ufw is active" warning on Ubuntu when ufw is installed but disabled.
+
+### Added
+- Turkish voices for voice mode (XTTS-v2 and Piper), routed by the `tr-` voice prefix.
+
 ## [0.1.0] - 2026-10-28
 
 First public preview.
