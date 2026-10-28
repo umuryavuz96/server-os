@@ -346,7 +346,9 @@ export async function linuxPermissions(sys: LinuxSys, c = config): Promise<Permi
     let status: PermStatus = "granted", detail = "The panel listens on loopback only; the firewall is not involved.", fw = "", fix: string[] = [];
     if (exposed) {
       const [ufw, fwd] = await Promise.all([sys.run(["systemctl", "is-active", "ufw"]), sys.run(["systemctl", "is-active", "firewalld"])]);
-      fw = /^active/m.test(fwd.out) ? "firewalld" : /^active/m.test(ufw.out) ? "ufw" : "";
+      // Ubuntu's ufw.service is "active (exited)" even while the firewall is disabled; /etc/ufw/ufw.conf says which.
+      const ufwOn = /^active/m.test(ufw.out) && !/^\s*ENABLED\s*=\s*no\b/im.test(sys.readFile("/etc/ufw/ufw.conf") ?? "");
+      fw = /^active/m.test(fwd.out) ? "firewalld" : ufwOn ? "ufw" : "";
       if (!fw) detail = "No ufw or firewalld is running.";
       else {
         status = "unknown"; detail = `${fw} is active and the panel listens on ${sys.env.HOST}:${port}. If other devices cannot reach it, open the port (reading firewall rules needs root, so this is not tested).`;

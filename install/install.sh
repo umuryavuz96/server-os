@@ -72,5 +72,18 @@ ln -sfn current "$HOME_DIR/source"
 mkdir -p "$HOME_DIR/bin"
 install -m 0755 "$tmp/server-os-setup" "$HOME_DIR/bin/server-os-setup"
 
+# `server-os` CLI (pair, devices, revoke, init): a wrapper over the bundled server/cli.ts, linked into ~/.local/bin.
+cat > "$HOME_DIR/bin/server-os" <<WRAP
+#!/bin/sh
+export SERVER_OS_HOME="\${SERVER_OS_HOME:-$HOME_DIR}"
+for b in "\$(command -v bun 2>/dev/null)" "\$HOME/.bun/bin/bun" /opt/homebrew/bin/bun /usr/local/bin/bun; do
+  [ -n "\$b" ] && [ -x "\$b" ] && exec "\$b" "$HOME_DIR/current/server/cli.ts" "\$@"
+done
+echo "server-os: Bun not found (install it from https://bun.sh)" >&2; exit 1
+WRAP
+chmod 0755 "$HOME_DIR/bin/server-os"
+mkdir -p "$HOME/.local/bin" && ln -sfn "$HOME_DIR/bin/server-os" "$HOME/.local/bin/server-os"
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) say "Add ~/.local/bin to your PATH to use the server-os command (or run $HOME_DIR/bin/server-os)" ;; esac
+
 say "Starting the setup wizard"
 exec "$HOME_DIR/bin/server-os-setup" --source "$HOME_DIR/current" --home "$HOME_DIR" </dev/tty
