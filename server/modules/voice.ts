@@ -4,6 +4,7 @@
 // voices named "tr-…": XTTS-v2 and Piper). All speak the same API. Audio streams straight through as it is made, sentence by sentence:
 // raw 16-bit mono PCM at 24 kHz, so an app can start playing before the whole reply is synthesized.
 import { config } from "../core/config";
+import { cloudEnabled } from "./cloudVoice";
 
 const base = () => (config.integrations as { tts?: string }).tts?.replace(/\/$/, "") ?? "http://127.0.0.1:8880";
 const chatterbox = () => (config.integrations as { ttsChatterbox?: string }).ttsChatterbox?.replace(/\/$/, "") ?? "http://127.0.0.1:8881";
@@ -31,13 +32,16 @@ export async function voiceAvailable(): Promise<boolean> {
   try { return (await fetch(`${base()}/health`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; }
 }
 
-export async function voices(): Promise<{ voices: string[]; rate: number } | null> {
+type VoiceList = { voices: string[]; rate: number; cloud?: string[]; labels?: Record<string, string> };
+export async function voices(): Promise<{ voices: string[]; rate: number; cloud: string[]; labels: Record<string, string>; cloudEnabled: boolean } | null> {
   const list = async (url: string) => {
-    try { return await (await fetch(`${url}/v1/voices`, { signal: AbortSignal.timeout(3000) })).json() as { voices: string[]; rate: number }; } catch { return null; }
+    try { return await (await fetch(`${url}/v1/voices`, { signal: AbortSignal.timeout(3000) })).json() as VoiceList; } catch { return null; }
   };
   const [k, c, t] = await Promise.all([list(base()), list(chatterbox()), list(turkish())]);
   if (!k && !c && !t) return null;
-  return { voices: [...(t?.voices ?? []), ...(c?.voices ?? []), ...(k?.voices ?? [])], rate: 24000 };
+  // cloud: voices a service runs in the cloud (picker marks them); they are served locally while the switch is off
+  return { voices: [...(t?.voices ?? []), ...(c?.voices ?? []), ...(k?.voices ?? [])], rate: 24000,
+    cloud: [...(t?.cloud ?? []), ...(c?.cloud ?? []), ...(k?.cloud ?? [])], labels: { ...k?.labels, ...c?.labels, ...t?.labels }, cloudEnabled: cloudEnabled() };
 }
 
 /** The service's streaming response (PCM), or null when it isn't running. */
@@ -45,7 +49,7 @@ export async function speak(text: string, voice?: string, speed?: number): Promi
   try {
     const r = await fetch(`${serviceFor(voice)}/v1/audio/speech`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input: speakable(text), voice: voice || "af_heart", speed: speed || 1.0, format: "pcm" }),
+      body: JSON.stringify({ input: speakable(text), voice: voice || "af_heart", speed: speed || 1.0, format: "pcm", cloud: cloudEnabled() }),
     });
     return r.ok ? r : null;
   } catch { return null; }

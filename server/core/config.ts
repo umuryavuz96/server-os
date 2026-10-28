@@ -36,6 +36,8 @@ export interface Integrations {
    *  config.json, status.json); session: its tmux session (default house-voice). voiceLaunch: script that starts the bot's
    *  voice session, kept up by a watchdog in tmux session voiceSession (default bot-voice); it powers the app's voice screen. */
   houseVoice?: { dir?: string; session?: string; voiceSession?: string; voiceLaunch?: string };
+  /** Cloud voices (ElevenLabs): the ~/.env variable holding the API key (default ELEVENLABS_API_KEY; "User: read" permission shows usage on the Voice page). */
+  elevenLabs?: { keyEnv?: string };
   /** A folder with catalog.json (+ gates/, icons/, off-containers.txt) that lists apps you manage outside the installer. Off unless set. */
   catalog?: string;
   /** Remote screen: the web panel shows this Mac's screen through its built-in Screen Sharing (VNC) so a permission switch

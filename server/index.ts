@@ -12,6 +12,7 @@ import { envKeyNames, linkLogin, listLogins, revealLogin } from "./modules/login
 import { startSystemCollectors, history, historyRange, RANGES, type Range } from "./system";
 import { findEvents, startConsumerCollector } from "./modules/consumers";
 import { speak, voiceAvailable, voices } from "./modules/voice";
+import { cloudEnabled, setCloudEnabled, usage as cloudUsage } from "./modules/cloudVoice";
 import { houseVoice, houseVoiceAvailable, houseVoiceWatchdog, setHouseVoice, voiceSessionAvailable } from "./modules/houseVoice";
 import { DEMO, demoBotsFeed, startDemo, demoToggle, demoRunJob, demoJobLog, demoInstall, demoStorage } from "./demo";
 import { startOpsCollectors, alerts, readJobs, runJob, tail } from "./ops";
@@ -134,6 +135,15 @@ api.post("/voice/speak", async (c) => {
   const r = await speak(text, b?.voice, b?.speed);
   if (!r?.body) return problem(c, 503, "Service Unavailable", "The voice service (Kokoro, :8880) is not running");
   return new Response(r.body, { headers: { "Content-Type": "audio/pcm", "X-Sample-Rate": "24000", "X-Channels": "1", "Cache-Control": "no-store" } });
+});
+// Cloud voices: the on/off switch and the account's live usage (cached 60 s).
+api.get("/voice/cloud", async (c) => c.json({ enabled: cloudEnabled(), usage: await cloudUsage() }));
+api.patch("/voice/cloud", async (c) => {
+  const b = await jsonBody(c);
+  if (!b || typeof b.enabled !== "boolean") return problem(c, 400, "Bad Request", "JSON with enabled: true or false");
+  setCloudEnabled(b.enabled);
+  audit(c.get("actor"), "voice.cloud", "cloud-voices", "ok", c.get("trace"), b);
+  return c.json({ enabled: cloudEnabled(), usage: await cloudUsage() });
 });
 // House voice: the wake-word speaker on the desk that talks to the main bot. GET its state, PATCH to switch it or tune it.
 api.get("/house-voice", async (c) => c.json(houseVoiceAvailable() ? await houseVoice() : { available: false }));

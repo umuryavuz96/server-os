@@ -47,6 +47,7 @@ integrations:              # optional links to things already running on the mac
     session: house-voice                   # its tmux session (default house-voice)
     voiceLaunch: ~/.claude/channels/voice/launch.command   # starts the bot's voice session (app voice screen + desk speaker)
     voiceSession: bot-voice                # tmux session for it (default bot-voice)
+  elevenLabs: { keyEnv: ELEVENLABS_API_KEY }   # optional: ~/.env variable with an ElevenLabs key (usage card needs "User: read")
   screen:                                  # off unless enabled: System → Mac screen / Server screen (macOS Screen Sharing, or a VNC server on Linux, in the browser)
     enabled: true                          # see docs/permissions.md, "Remote screen"
     resizeDisplay: true                    # macOS: while a web session is open, switch the Mac's display to 1080p/720p (non-HiDPI) so the picture is fast; the original mode is restored on disconnect, idle, takeover, shutdown and next start. true = Screen Sharing's virtual display only, any = a real monitor too, false = never

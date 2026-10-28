@@ -14,3 +14,7 @@ test("voices are routed to their service by name prefix", () => {
   expect(serviceFor("af_heart")).toBe("http://127.0.0.1:8880");
   expect(serviceFor(undefined)).toBe("http://127.0.0.1:8880");
 });
+
+test("cloud voices route to the Turkish service like the local ones", () => {
+  expect(serviceFor("tr-hasan")).toBe("http://127.0.0.1:8882");
+});

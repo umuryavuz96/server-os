@@ -4,6 +4,7 @@
 import { ref } from "vue";
 import { useFeed } from "../bots";
 import BotFeed from "../components/bots/BotFeed.vue";
+import VoiceCloud from "../components/bots/VoiceCloud.vue";
 import HouseVoice from "../components/bots/HouseVoice.vue";
 
 const { grouped, meta, state } = useFeed(ref("voice"));
@@ -15,7 +16,7 @@ const { grouped, meta, state } = useFeed(ref("voice"));
       <h1>Voice</h1>
       <p class="meta">Talk to Lahmacun from the app's voice screen, or say “Hey Jarvis” at the desk speaker. Both go to this conversation.</p>
     </header>
-    <HouseVoice class="vv-hv" />
+    <div class="vv-hv"><HouseVoice /><VoiceCloud /></div>
     <section class="vv-chat card" aria-label="Voice conversation">
       <div class="vt"><span>Conversation</span><span>{{ state === "live" ? (meta?.session?.working ? "thinking…" : "live") : state }}</span></div>
       <p v-if="!grouped.length" class="meta">Nothing said yet.</p>
