@@ -10,6 +10,7 @@ import { getState } from "./store";
 import { config, dir } from "./core/config";
 import { audit } from "./core/logger";
 import { problem, type Env } from "./core/http";
+import { readAgentLog } from "./modules/bots/agentLog";
 import {
   Transcript, latestTranscript, expiredWatcher, rearmPrompt, projectDir, readRequests, writeRequests, requestPrompt, requestStates, newRequestId, killJobProcess, DashSent, settleAfterInterrupt, clearIfStale,
   type BgJob, type BotRequest, type FeedItem, type NativeBots,
@@ -301,6 +302,14 @@ export function botRoutes(api: Hono<Env>, cos: string | undefined, nativeBots: N
     const t = p ? parser(p, b.channel) : null; t?.update();
     return t?.jobs.get(id) ?? null;
   };
+  // A sub-agent's own conversation (prompt, replies, one line per tool call), last ~200 entries, secrets masked.
+  api.get("/bots/:ch/jobs/:id/log", (c) => {
+    const b = bot(c.req.param("ch"));
+    const p = b ? transcriptPath(b) : null;
+    const j = p ? findJob(b!, c.req.param("id")) : null;
+    if (!p || !j || j.kind !== "agent" || !j.taskId || !/^[a-z0-9]+$/.test(j.taskId)) return c.json([]);
+    return c.json(readAgentLog(join(p.replace(/\.jsonl$/, ""), "subagents", `agent-${j.taskId}.jsonl`)));
+  });
   api.post("/bots/:ch/jobs/:id/stop", async (c) => {
     const b = live(c);
     if (!b?.pid) return problem(c, 409, "Conflict", "The bot isn't running");

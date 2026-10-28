@@ -5,6 +5,7 @@
 import { ref, computed, onUnmounted, watch } from "vue";
 import { api, toast, post, type BotSession } from "../../store";
 import { family, modelLabel, dur, clock, type Meta, type BgJob } from "../../bots";
+import JobDetail from "./JobDetail.vue";
 
 const props = defineProps<{ bot: BotSession; meta: Meta | null }>();
 const emit = defineEmits<{ newJob: []; restart: []; stop: []; instructions: []; remove: []; workspace: [] }>();
@@ -37,7 +38,10 @@ const reqs = computed(() => props.meta?.requests ?? []);
 const reqFor = (j: BgJob) => (j.request ? reqs.value.find((r) => r.id === j.request) : undefined);
 const open = computed(() => reqs.value.filter((r) => r.status !== "running"));
 const jobs = computed(() => props.meta?.jobs ?? []);
-const liveCount = computed(() => jobs.value.filter((j) => !j.ended).length);
+const live = computed(() => jobs.value.filter((j) => !j.ended));
+const liveCount = computed(() => live.value.length);
+const detail = ref<string | null>(null);
+const detailJob = computed(() => jobs.value.find((j) => j.id === detail.value));
 const KIND: Record<string, string> = { monitor: "MONITOR", shell: "SHELL", agent: "AGENT", watch: "WATCH", schedule: "SCHEDULE", task: "TASK" };
 function jobMeta(j: BgJob) {
   if (j.ended) return `${j.endReason === "timed out" ? "Timed out" : j.endReason === "stopped" ? "Stopped" : j.endReason === "replaced" ? "Replaced" : "Ended"} ${clock(j.ended)}${j.events ? ` · ${j.events} events` : ""}`;
@@ -108,19 +112,21 @@ const PRESET: Record<string, string> = { safe: "Safe", dev: "Dev", full: "Full" 
         <p class="bj-m">{{ r.status === "failed" ? `Failed: ${r.reason}` : `Sent ${clock(r.created)} · ${r.id} · waiting for the bot to set it up…` }}</p>
         <div class="bj-a"><button type="button" class="btn sm ghost" @click="dismiss(r.id)">{{ r.status === "failed" ? "Dismiss" : "Forget it" }}</button></div>
       </div>
-      <div v-for="j in jobs" :key="j.id" class="bj" :class="{ off: !!j.ended }">
+      <div v-for="j in live" :key="j.id" class="bj tap" role="button" tabindex="0" @click="detail = j.id" @keydown.enter.self="detail = j.id">
         <div class="bj-h">
           <span class="kd" :class="j.kind">{{ KIND[j.kind] }}</span><b>{{ reqFor(j)?.name ?? j.name }}</b>
-          <button type="button" class="sw sm" role="switch" :aria-checked="!j.ended" :aria-label="`${j.ended ? 'Start' : 'Stop'} ${j.name}`" :class="{ busy: busy === 'job:' + j.id }" :disabled="!bot.running || !!busy" @click="toggleJob(j)"></button>
+          <button type="button" class="sw sm" role="switch" :aria-checked="!j.ended" :aria-label="`${j.ended ? 'Start' : 'Stop'} ${j.name}`" :class="{ busy: busy === 'job:' + j.id }" :disabled="!bot.running || !!busy" @click.stop="toggleJob(j)" @keydown.enter.stop></button>
         </div>
         <p v-if="reqFor(j)" class="bj-w">{{ reqFor(j)!.what }}</p>
         <code class="bj-c">{{ j.command }}</code>
         <p class="bj-m">{{ jobMeta(j) }}<template v-if="j.lastEvent && !j.ended"> · last: {{ j.lastEvent }}</template></p>
         <p v-if="j.rearms >= 5 && !j.ended" class="bj-warn">Re-armed {{ j.rearms }}× in 24 h{{ j.events ? "" : " with nothing to report" }}</p>
       </div>
-      <p v-if="!jobs.length && !open.length" class="bi-h">Nothing running in the background.</p>
+      <p v-if="!live.length && !open.length" class="bi-h">Nothing running in the background.</p>
       <p class="bi-h">Off stops the process now. On asks the bot to start it again. New ones go to the bot as instructions; it marks them running or failed.</p>
     </section>
+
+    <JobDetail v-if="detailJob" :channel="ch" :job="detailJob" :name="reqFor(detailJob)?.name ?? detailJob.name" :what="reqFor(detailJob)?.what" @close="detail = null" />
 
     <section v-if="meta?.schedules.length" class="bi-s">
       <h3>Scheduled by the bot</h3>

@@ -587,6 +587,7 @@ a.li:hover{background:#1b1b1e}
 .dr-wrap{position:fixed;inset:0;z-index:40;overscroll-behavior:contain}
 /* While a drawer or dialog is open the page behind it stays put; only the panel scrolls. */
 html:has(.dr-wrap,.dlg-wrap){overflow:hidden}
+.dr-wrap.top{z-index:70}
 .dr-bg{position:absolute;inset:0;background:rgba(5,5,7,.55);backdrop-filter:blur(3px)}
 .dr{position:absolute;top:0;right:0;bottom:0;width:min(480px,100%);background:#111113;border-left:1px solid var(--line);display:flex;flex-direction:column;box-shadow:-30px 0 60px rgba(0,0,0,.45)}
 .dr-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
@@ -1121,6 +1122,12 @@ a.dbox.path.go:hover .go-hint{color:var(--ink)}
 .bi-c .bar{display:block;height:4px;border-radius:2px;background:#1f1f23;margin-top:5px}.bi-c .bar i{display:block;height:4px;border-radius:2px;background:var(--ink);transition:width .4s var(--ease)}.bi-c .bar i.hot{background:var(--warn)}
 .bj{display:flex;flex-direction:column;gap:5px;border:1px solid #232327;border-radius:12px;padding:10px 12px;background:#0f0f11;transition:opacity .2s var(--ease)}
 .bj.off{opacity:.6;border-color:#1a1a1d}
+.bj.tap{cursor:pointer}.bj.tap:hover{border-color:#2f2f35}
+.jd{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin:0;font:500 13px/1.4 var(--body)}.jd dt{color:var(--muted)}.jd dd{margin:0;overflow-wrap:anywhere}
+.jd-log{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto;overscroll-behavior:contain;border:1px solid #232327;border-radius:12px;padding:10px;background:#0f0f11}
+.jl{display:flex;flex-direction:column;gap:2px;font:500 12.5px/1.45 var(--body);color:#c9c9ce;white-space:pre-wrap;overflow-wrap:anywhere}.jl small{font:600 10.5px var(--mono);color:var(--muted)}
+.jl.prompt{color:var(--ink)}.jl.tool{font:500 11.5px var(--mono);color:#8a8a92}
+.jd-c{font:500 12px var(--mono);color:#c9c9ce;overflow-wrap:anywhere}
 .bj.pending{border:1px dashed rgba(255,178,30,.45)}.bj.failed{border-color:rgba(255,59,69,.35)}
 .bj-h{display:flex;align-items:center;gap:9px}
 .bj-h b{flex:1;min-width:0;font:600 13.5px var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
