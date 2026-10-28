@@ -26,7 +26,7 @@ const openId = ref<string | null>(null), runAsk = ref<string | null>(null);
 const logs = reactive<Record<string, string>>({});
 
 const jobs = computed(() => S.jobs ?? []);
-const isOk = (j: Job) => ["ok", "ran"].includes(j.status);
+const isOk = (j: Job) => ["ok", "ran", "running"].includes(j.status);
 const counts = computed(() => ({ all: jobs.value.length, fail: jobs.value.filter((j) => j.status === "fail").length, ok: jobs.value.filter(isOk).length,
   untracked: jobs.value.filter((j) => ["untracked", "unknown"].includes(j.status)).length, paused: jobs.value.filter((j) => !j.enabled).length }));
 const SEGS = computed(() => [["all", "All jobs", counts.value.all], ["fail", "Failing", counts.value.fail], ["ok", "OK", counts.value.ok], ["untracked", "Not tracked", counts.value.untracked], ["paused", "Paused", counts.value.paused]] as [Seg, string, number][]);
@@ -105,7 +105,7 @@ const clock = (t: number | null) => (t ? new Date(t * 1000).toLocaleString("en-G
       <p v-if="!S.jobs" class="hint" style="padding: 16px">Loading jobs…</p>
       <TransitionGroup tag="div" name="tl" class="tbody">
         <div v-for="j in rows" :key="j.id" class="tr jr" :class="{ dim: !j.enabled }" role="row" tabindex="0" @click="openId = j.id" @keydown.enter="openId = j.id">
-          <span class="an" role="cell"><b>{{ j.name }}</b><small>{{ j.status === "fail" && j.cause ? j.cause : j.when }}</small></span>
+          <span class="an" role="cell"><b>{{ j.name }}<span v-if="j.source === 'launchd'" class="pill p-off" style="margin-left: 8px">LAUNCHD</span></b><small>{{ j.status === "fail" && j.cause ? j.cause : j.when }}</small></span>
           <span role="cell"><span class="pill" :class="st(j)[0]">{{ st(j)[1] }}</span></span>
           <span class="num" role="cell">{{ j.lastRun ? ago(j.lastRun) : "—" }}</span>
           <span class="num" role="cell">{{ j.enabled ? nextTxt(j.nextRun) : "—" }}</span>
@@ -113,7 +113,7 @@ const clock = (t: number | null) => (t ? new Date(t * 1000).toLocaleString("en-G
         </div>
       </TransitionGroup>
     </div>
-    <p class="foot">Built-in jobs run on the server's own scheduler and can be created, edited and paused here. Crontab jobs are listed read-only; their status comes from each job's last report to the notify bot.</p>
+    <p class="foot">Built-in jobs run on the server's own scheduler and can be created, edited and paused here. Crontab jobs and launchd agents are listed read-only; their status comes from each job's last report to the notify bot.</p>
 
     <Teleport to="body">
       <Transition name="drawer">
@@ -149,8 +149,9 @@ const clock = (t: number | null) => (t ? new Date(t * 1000).toLocaleString("en-G
                 </div>
               </template>
               <template v-else-if="opened.log"><div class="logsrc">Log (last 60 lines)</div><pre class="log">{{ logs[opened.id] ?? "" }}</pre></template>
+              <p v-else-if="opened.source === 'launchd'" class="hint">This launchd agent has no log file yet.</p>
               <p v-else-if="!builtIn(opened)" class="hint">This job does not run through cron_wrap, so it has no log or status history.</p>
-              <button v-if="opened.enabled" type="button" class="btn primary big" @click="runAsk = opened.id">▶ Run now</button>
+              <button v-if="opened.enabled && opened.canRun !== false" type="button" class="btn primary big" @click="runAsk = opened.id">▶ Run now</button>
             </div>
           </aside>
         </div>
@@ -171,7 +172,7 @@ const clock = (t: number | null) => (t ? new Date(t * 1000).toLocaleString("en-G
 
     <ConfirmDialog :open="!!runJob" :title="`Run ${runJob?.name ?? ''} now?`" :subtitle="runJob?.when" confirm-label="Run now" @confirm="runNow(runJob!.id)" @cancel="runAsk = null">
       <ul>
-        <li>{{ runJob?.id.startsWith("sd:") ? "Starts the job on the server's scheduler, right now." : "Runs the exact crontab command in the background, right now." }}</li>
+        <li>{{ runJob?.id.startsWith("sd:") ? "Starts the job on the server's scheduler, right now." : runJob?.source === "launchd" ? "Asks launchd to start the agent now (launchctl kickstart)." : "Runs the exact crontab command in the background, right now." }}</li>
         <li>It is the real job: it may send Telegram messages, write files or deploy.</li>
         <li>{{ runJob?.id.startsWith("sd:") ? "The run and its output appear under Runs." : "Output lands in the job's log; status updates within 30 s." }}</li>
       </ul>

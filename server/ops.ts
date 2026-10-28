@@ -103,10 +103,54 @@ export interface Job {
   id: string; name: string; schedule: string; when: string; enabled: boolean; nextRun: number | null; status: string; lastRun: number | null; cause: string; log: string | null; command: string;
   // ID card (integrations.cron.cards) + the last runs it reported to the notify bot, newest first
   prevRun: number | null; category: string | null; about: string | null; reports: string | null; project: string | null; runs: { t: number; ok: boolean }[];
+  source?: "launchd"; canRun?: boolean; // launchd agents (integrations.cron.launchd); canRun false = an always-running service, kickstart would do nothing
 }
 const CARDS = () => cronCfg()?.cards;
 type Card = { category?: string; about?: string; reports?: string; project?: string };
 function readCards(): Record<string, Card> { const f = CARDS(); if (!f) return {}; try { return JSON.parse(readFileSync(f, "utf8")); } catch { return {}; } }
+
+// ---------- launchd agents (integrations.cron.launchd = label prefix) ----------
+type PlistLike = { Label?: string; Program?: string; ProgramArguments?: string[]; StartInterval?: number; StartCalendarInterval?: Record<string, number> | Record<string, number>[];
+  KeepAlive?: unknown; RunAtLoad?: boolean; WatchPaths?: string[]; StandardOutPath?: string; StandardErrorPath?: string };
+const pad2 = (n: number) => String(n).padStart(2, "0");
+/** Human schedule + whether the agent is a long-running service, from a plist converted to JSON. */
+export function parseAgent(p: PlistLike): { when: string; schedule: string; always: boolean; command: string; log: string | null } {
+  const cal = p.StartCalendarInterval ? [p.StartCalendarInterval].flat() : [];
+  const iv = p.StartInterval;
+  const at = (c: Record<string, number>) => `${pad2(c.Hour ?? 0)}:${pad2(c.Minute ?? 0)}`;
+  const day = (c: Record<string, number>) => (c.Weekday != null ? DOW[c.Weekday % 7] + " " : c.Day != null ? `day ${c.Day} ` : "");
+  const every = (n: number) => (n % 3600 === 0 ? `every ${n / 3600} h` : n % 60 === 0 && n >= 120 ? `every ${n / 60} min` : `every ${n} s`);
+  const timed = cal.length ? (cal.every((c) => c.Hour == null && c.Weekday == null && c.Day == null) ? `hourly at :${pad2(cal[0].Minute ?? 0)}` : cal.map((c) => c.Hour == null ? `${day(c)}hourly at :${pad2(c.Minute ?? 0)}` : (c.Weekday == null && c.Day == null ? "daily " : day(c)) + at(c)).join(", ")) : null;
+  const always = !iv && !cal.length && !!(p.KeepAlive || p.RunAtLoad);
+  const when = iv ? every(iv) : timed ?? (p.KeepAlive ? "always running" : p.RunAtLoad ? "at login" : p.WatchPaths?.length ? "when files change" : "on demand");
+  const schedule = iv ? `StartInterval ${iv}` : cal.length ? "StartCalendarInterval" : p.KeepAlive ? "KeepAlive" : p.RunAtLoad ? "RunAtLoad" : "—";
+  const args = p.ProgramArguments ?? (p.Program ? [p.Program] : []);
+  return { when, schedule, always: always && !!p.KeepAlive, command: args.join(" "), log: p.StandardOutPath ?? p.StandardErrorPath ?? null };
+}
+// launchctl print is slow-ish and the Jobs slice refreshes often: the whole launchd listing is cached for 30 s
+let ldCache: { t: number; jobs: Job[] } | null = null;
+async function readLaunchd(prefix: string): Promise<Job[]> {
+  if (ldCache && Date.now() - ldCache.t < 30_000) return ldCache.jobs;
+  const dir = join(HOME, "Library/LaunchAgents"), uid = process.getuid?.() ?? 501;
+  let files: string[] = []; try { files = readdirSync(dir).filter((f) => f.startsWith(prefix) && f.endsWith(".plist")); } catch {}
+  const jobs = (await Promise.all(files.map(async (f): Promise<Job | null> => {
+    const label = f.slice(0, -6);
+    if (label === process.env.XPC_SERVICE_NAME) return null; // this server's own service: restarting it from its own UI would be confusing
+    const [pl, pr] = await Promise.all([run(["/usr/bin/plutil", "-convert", "json", "-o", "-", join(dir, f)], 4_000), run(["launchctl", "print", `gui/${uid}/${label}`], 5_000)]);
+    let plist: PlistLike; try { plist = JSON.parse(pl.out); } catch { return null; }
+    const a = parseAgent(plist), loaded = pr.code === 0;
+    const state = /^\tstate = (.+)$/m.exec(pr.out)?.[1], runs = /^\truns = (\d+)$/m.exec(pr.out)?.[1], exit = /^\tlast exit code = (.+)$/m.exec(pr.out)?.[1];
+    const bad = loaded && ((exit != null && exit !== "0" && exit !== "(never exited)") || (a.always && state !== "running"));
+    const status = !loaded ? "paused" : state === "running" ? "running" : bad ? "fail" : runs && runs !== "0" ? "ok" : "unknown";
+    const logf = a.log && existsSync(a.log) ? a.log : null;
+    return { id: `ld:${label}`, name: label.slice(prefix.length) || label, schedule: a.schedule, when: a.when, enabled: loaded, nextRun: null, prevRun: null, status,
+      lastRun: logf ? statSync(logf).mtimeMs / 1000 : null, cause: !loaded ? "" : exit && exit !== "0" ? `exit code ${exit}` : bad ? "not running" : "", log: logf, command: a.command,
+      category: "launchd", about: loaded ? `launchd agent ${label}${runs ? `, ${runs} runs since load` : ""}` : `launchd agent ${label} (not loaded)`, reports: null, project: null, runs: [],
+      source: "launchd", canRun: !a.always };
+  }))).filter((j): j is Job => !!j);
+  ldCache = { t: Date.now(), jobs };
+  return jobs;
+}
 
 export async function readJobs(): Promise<Job[]> {
   if (!cronCfg()) return [];
@@ -136,6 +180,7 @@ export async function readJobs(): Promise<Job[]> {
       category: cards[name]?.category ?? null, about: cards[name]?.about ?? null, reports: cards[name]?.reports ?? null, project: cards[name]?.project ?? null,
       runs: runs.get(name) ?? [] });
   });
+  const ld = cronCfg()?.launchd; if (ld) jobs.push(...await readLaunchd(ld));
   // pure-comment lines that merely look like jobs (e.g. "# 0 8 * * * old thing") count as paused; real disabled jobs are kept
   return jobs.sort((a, b) => Number(!a.enabled) - Number(!b.enabled) || Number(a.status !== "fail") - Number(b.status !== "fail") || a.name.localeCompare(b.name));
 }
@@ -151,6 +196,12 @@ export function tail(path: string, n = 60) {
 export async function runJob(id: string) {
   const job = (await readJobs()).find((j) => j.id === id);
   if (!job) return { ok: false, detail: "unknown job" };
+  if (job.source === "launchd") {
+    if (!job.enabled || job.canRun === false) return { ok: false, detail: job.enabled ? "an always-running service, nothing to run" : "agent is not loaded" };
+    const r = await run(["launchctl", "kickstart", `gui/${process.getuid?.() ?? 501}/${id.slice(3)}`], 8_000);
+    log(`job ${job.name} -> RUN NOW (${id}) ${r.code}`); ldCache = null;
+    return r.code === 0 ? { ok: true, detail: `${job.name} started` } : { ok: false, detail: r.out || "launchctl failed" };
+  }
   if (!job.enabled) return { ok: false, detail: "job is paused in crontab" };
   Bun.spawn(["/bin/sh", "-c", job.command], { cwd: HOME, env: { ...process.env, PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", HOME }, stdin: "ignore", stdout: "ignore", stderr: "ignore" }).unref();
   log(`job ${job.name} -> RUN NOW (${id})`);

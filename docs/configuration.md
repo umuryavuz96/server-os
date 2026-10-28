@@ -41,6 +41,7 @@ integrations:              # optional links to things already running on the mac
     history: ~/scripts/logs/notify_cron_history.jsonl   # optional: notify-bot JSONL → last-run status + Alerts
     cards: ~/scripts/crontabs/jobs.json                 # optional: job ID cards (category, about, project)
     logs: ~/scripts/logs                                # optional: per-job <name>.log files
+    launchd: com.me.                                    # optional: also list your launchd agents with this label prefix (~/Library/LaunchAgents)
   channelsDir: ~/.claude/channels          # channel folders (launch.command, bot.pid); default for telegramBots, launch flags for claudeOS bots
   houseVoice:                              # off unless set: desk speaker (wake-word listener) card in Bots
     dir: ~/projects/house-voice            # listener project: listen.py, config.json, status.json, .venv

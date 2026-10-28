@@ -28,7 +28,9 @@ export interface Integrations {
   telegramBots?: boolean;
   /** Cron jobs: list the user crontab as the Jobs tab. Off unless set. The optional paths enrich it with a notify bot's
    *  history (JSONL, feeds Alerts + last-run status), job ID cards (JSON) and cron_wrap-style per-job logs. */
-  cron?: { history?: string; cards?: string; logs?: string };
+  cron?: { history?: string; cards?: string; logs?: string;
+    /** Label prefix (e.g. "com.me.") of the user's launchd agents in ~/Library/LaunchAgents to list on the Jobs tab, read-only plus "run now". */
+    launchd?: string };
   /** Folder with one sub-folder per Claude Code Telegram channel (launch.command, bot.pid, run.pid). Default for telegramBots: ~/.claude/channels.
    *  Also where the claudeOS provider reads each bot's launch flags. */
   channelsDir?: string;

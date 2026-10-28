@@ -8,7 +8,7 @@ export interface AppState {
 export interface System { cpuTemp: number | null; gpuTemp: number | null; load1: number | null; ramUsedGB: number | null; ramTotalGB: number; swapGB: number | null; boot: number | null; internal: { totalGB: number; freeGB: number } | null; ssd: { totalGB: number; freeGB: number } | null; }
 export interface SpeedPoint { t: number; ping: number; down: number; up: number; }
 export interface Monitor { name: string; pct: number | null; up: boolean; lastUp: number | null; }
-export interface Job { id: string; name: string; schedule: string; when: string; enabled: boolean; nextRun: number | null; status: string; lastRun: number | null; cause: string; log: string | null; command: string; about?: string | null; category?: string | null; source?: "server"; kind?: "command" | "claude" | "http"; webhook?: boolean; }
+export interface Job { id: string; name: string; schedule: string; when: string; enabled: boolean; nextRun: number | null; status: string; lastRun: number | null; cause: string; log: string | null; command: string; about?: string | null; category?: string | null; source?: "server" | "launchd"; canRun?: boolean; kind?: "command" | "claude" | "http"; webhook?: boolean; }
 export interface Bot { dir: string; name: string; state: string; since: number | null; lastFile: number | null; }
 export interface Hook { slug: string; label: string; description: string; port: number; state: string; listening: boolean; logMtime: number | null; logTail: string; }
 export interface HistEntry { t: number; job: string; action: string; sent: boolean; id: number | null; cause: string; title: string; body: string; }

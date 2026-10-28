@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { humanSchedule, nextRun, prevRun, jobName } from "./ops";
+import { humanSchedule, nextRun, prevRun, jobName, parseAgent } from "./ops";
 import { setSlice, setMapEntry, subscribe } from "./store";
 
 test("humanSchedule", () => {
@@ -54,4 +54,19 @@ test("historyRange returns aligned fixed-step buckets with nulls, never more tha
   expect(r.t.length).toBeLessThanOrEqual(Math.ceil(86400 / r.step) + 1);
   expect(r.t.every((t, i) => i === 0 || t - r.t[i - 1] === r.step)).toBe(true);
   r.avg.forEach((v, i) => { if (v !== null) expect(r.min[i]!).toBeLessThanOrEqual(r.max[i]!); });
+});
+
+test("parseAgent: launchd plist -> schedule", () => {
+  const a = parseAgent({ ProgramArguments: ["/x/guard.sh", "-v"], StartInterval: 60, StandardOutPath: "/x/g.log" });
+  expect([a.when, a.schedule, a.always, a.command, a.log]).toEqual(["every 60 s", "StartInterval 60", false, "/x/guard.sh -v", "/x/g.log"]);
+  expect(parseAgent({ StartInterval: 3600 }).when).toBe("every 1 h");
+  expect(parseAgent({ StartInterval: 600 }).when).toBe("every 10 min");
+  expect(parseAgent({ StartCalendarInterval: { Hour: 4, Minute: 5 } }).when).toBe("daily 04:05");
+  expect(parseAgent({ StartCalendarInterval: { Weekday: 0, Hour: 9, Minute: 0 } }).when).toBe("Sun 09:00");
+  expect(parseAgent({ StartCalendarInterval: [{ Hour: 8, Minute: 0 }, { Hour: 20, Minute: 30 }] }).when).toBe("daily 08:00, daily 20:30");
+  expect(parseAgent({ StartCalendarInterval: { Minute: 15 } }).when).toBe("hourly at :15");
+  const svc = parseAgent({ Program: "/bin/svc", KeepAlive: true, RunAtLoad: true, StandardErrorPath: "/x/e.log" });
+  expect([svc.when, svc.always, svc.command, svc.log]).toEqual(["always running", true, "/bin/svc", "/x/e.log"]);
+  expect(parseAgent({ RunAtLoad: true }).when).toBe("at login");
+  expect(parseAgent({}).when).toBe("on demand");
 });
