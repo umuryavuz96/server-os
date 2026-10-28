@@ -28,7 +28,13 @@ const leftLabel = (s: number) => {
 const usageBusy = ref(false);
 async function refreshUsage() {
   usageBusy.value = true;
-  try { await api("/claude/usage/refresh", { method: "POST", body: {} }); } catch (e) { toast((e as Error).message); }
+  const before = S.claudeUsage?.fetchedAt;
+  try {
+    await api("/claude/usage/refresh", { method: "POST", body: {} });
+    await new Promise((r) => setTimeout(r, 600)); // the new numbers arrive over the live stream
+    // The server skips the read while Anthropic rate-limits it; say so instead of doing nothing.
+    if (S.claudeUsage?.fetchedAt === before) toast(`Anthropic is rate-limiting usage reads. Last read ${before ? ago(before) : "never"}; it retries by itself.`);
+  } catch (e) { toast((e as Error).message); }
   usageBusy.value = false;
 }
 
