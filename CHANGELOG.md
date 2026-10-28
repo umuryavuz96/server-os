@@ -2,11 +2,15 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-28
 
 First public preview.
 
 ### Added
+- Self-updater: signed releases (Ed25519 over SHA256SUMS), one-tap or nightly updates from the panel, health-checked switch with automatic rollback, last two versions kept. Homebrew installs defer to `brew upgrade`; git checkouts never self-apply. See `RELEASING.md`.
+- Mac screen as a modal over the page with floating controls and a picture-in-picture that grows and shrinks in place.
+- Permissions how-to: step-by-step mini visuals per permission, popups triggered directly where macOS has one, live status that closes the screen once a permission is on.
+- Discover: rotating editor's picks (hero and side cards), adaptive layouts for every tab from phone to ultrawide.
 - Mac screen: with `integrations.screen.enabled`, the panel shows this Mac's screen in the browser (noVNC 1.7.0 over `GET /api/v1/screen/ws`, piped to Screen Sharing on 127.0.0.1:5900). Permissions → "Fix on the Mac screen" opens the right System Settings pane, shows the screen, and re-checks when you close it. Owner only (admin key or a paired device, never the agent), same-origin, one session at a time, idle timeout and hard cap, audited. Apple's login (RFB type 30) works on plain http too, through a small AES fallback for browsers without WebCrypto. The setup wizard reports whether Screen Sharing is on. See `docs/permissions.md`.
 - macOS permissions: the server lists the privacy permissions it needs (Full Disk Access, Local Network, volumes, folders, microphone) with why, which program holds the grant, status and a System Settings link. Shown in System → Permissions, as an Overview banner when a required one is missing, in the setup wizard (new step 8) and at `/api/v1/permissions`. See `docs/permissions.md`.
 - `integrations.houseVoice` and `integrations.channelsDir` replace the hardcoded desk-speaker paths and tmux session names; the feature stays off unless configured.
