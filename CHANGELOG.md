@@ -4,13 +4,23 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-28
+
 ### Added
-- Voices page: every voice the speech services can speak with (language, engine, local or cloud and its cost, measured speed) with a play button whose sample is made once and cached under `data/voice-samples/`, a "Use this voice" button for the desk speaker, and a catalog of open-source voices to try (Turkish support, cloning, licence and size taken from each model card, links to the repo and demo).
-- Cloud voices (ElevenLabs) for voice mode: a "Cloud voices" switch and live usage (credits used / limit, reset date, plan, about how many minutes of speech are left) on the Voice page, and a voice picker on the desk speaker card that marks cloud and local voices. The key comes from the `integrations.elevenLabs.keyEnv` variable (default `ELEVENLABS_API_KEY`) and needs the "User: read" permission for the usage numbers; with the switch off, cloud voices are spoken by a local voice.
+- Voice page: one page for voice mode and the desk speaker, with a voice picker grouped by language. Every voice has a play button; its sample is made once and cached under `data/voice-samples/`, and only one sample is made at a time. The page also has a catalog of open-source voices to try (Turkish support, cloning, licence and size taken from each model card, with links to the repo and demo). The separate Voices page is gone, and `#voices` links open `#voice`.
+- Cloud voices (ElevenLabs) for voice mode: a "Cloud voices" switch and live usage (credits used / limit, reset date, plan, about how many minutes of speech are left). The key comes from the `integrations.elevenLabs.keyEnv` variable (default `ELEVENLABS_API_KEY`) and needs the "User: read" permission for the usage numbers. With the switch off, cloud voices are spoken by a local voice.
+- Desk speaker language setting.
+- Bots: the inspector lists only running jobs and agents. Tap one for a drawer with its details and the sub-agent's conversation (`GET /bots/:ch/jobs/:id/log`, secrets redacted).
+- Jobs: launchd agents with a configured label prefix (`integrations.cron.launchd`) appear on the Jobs tab with their schedule, state, log and a Run now button.
 - Git checkouts (developer mode) get a working Update button: it fetches, fast-forwards to origin, installs dependencies if the manifests changed, rebuilds the panel, restarts through the service manager and rolls the checkout back if the new commit doesn't come up. It refuses, with the reason shown on the card, when the branch doesn't track origin, tracked files have local changes, or local commits aren't on GitHub. Nothing is stashed, discarded or forced.
 
 ### Changed
+- Panel icons are now Lucide icons, and language sections show SVG flags.
 - GitHub release notes are now the matching CHANGELOG section plus the compare link, so the update card shows what changed.
+
+### Fixed
+- Overview: the Claude usage refresh button now says when Anthropic is rate-limiting usage reads, instead of doing nothing.
+- Tests run against a throwaway `SERVER_OS_HOME` and no longer write into the real data folder.
 
 ## [0.1.1] - 2026-10-28
 
