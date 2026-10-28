@@ -5,6 +5,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
+- Voices page: every voice the speech services can speak with (language, engine, local or cloud and its cost, measured speed) with a play button whose sample is made once and cached under `data/voice-samples/`, a "Use this voice" button for the desk speaker, and a catalog of open-source voices to try (Turkish support, cloning, licence and size taken from each model card, links to the repo and demo).
 - Cloud voices (ElevenLabs) for voice mode: a "Cloud voices" switch and live usage (credits used / limit, reset date, plan, about how many minutes of speech are left) on the Voice page, and a voice picker on the desk speaker card that marks cloud and local voices. The key comes from the `integrations.elevenLabs.keyEnv` variable (default `ELEVENLABS_API_KEY`) and needs the "User: read" permission for the usage numbers; with the switch off, cloud voices are spoken by a local voice.
 - Git checkouts (developer mode) get a working Update button: it fetches, fast-forwards to origin, installs dependencies if the manifests changed, rebuilds the panel, restarts through the service manager and rolls the checkout back if the new commit doesn't come up. It refuses, with the reason shown on the card, when the branch doesn't track origin, tracked files have local changes, or local commits aren't on GitHub. Nothing is stashed, discarded or forced.
 

@@ -12,6 +12,7 @@ import { envKeyNames, linkLogin, listLogins, revealLogin } from "./modules/login
 import { startSystemCollectors, history, historyRange, RANGES, type Range } from "./system";
 import { findEvents, startConsumerCollector } from "./modules/consumers";
 import { speak, voiceAvailable, voices } from "./modules/voice";
+import { sampleFile, showcase } from "./modules/voiceShowcase";
 import { cloudEnabled, setCloudEnabled, usage as cloudUsage } from "./modules/cloudVoice";
 import { houseVoice, houseVoiceAvailable, houseVoiceWatchdog, setHouseVoice, voiceSessionAvailable } from "./modules/houseVoice";
 import { DEMO, demoBotsFeed, startDemo, demoToggle, demoRunJob, demoJobLog, demoInstall, demoStorage } from "./demo";
@@ -144,6 +145,13 @@ api.patch("/voice/cloud", async (c) => {
   setCloudEnabled(b.enabled);
   audit(c.get("actor"), "voice.cloud", "cloud-voices", "ok", c.get("trace"), b);
   return c.json({ enabled: cloudEnabled(), usage: await cloudUsage() });
+});
+// Voices page: all installed voices + the open-source catalog; a sample is made on the first press of play, then cached on disk.
+api.get("/voice/showcase", async (c) => c.json(await showcase()));
+api.get("/voice/sample", async (c) => {
+  const f = await sampleFile(c.req.query("voice") ?? "");
+  if (typeof f !== "string") return problem(c, f.status as 400, "Voice sample", f.error);
+  return new Response(Bun.file(f), { headers: { "Content-Type": "audio/wav", "Cache-Control": "private, max-age=3600" } });
 });
 // House voice: the wake-word speaker on the desk that talks to the main bot. GET its state, PATCH to switch it or tune it.
 api.get("/house-voice", async (c) => c.json(houseVoiceAvailable() ? await houseVoice() : { available: false }));

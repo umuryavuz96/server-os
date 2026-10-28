@@ -27,13 +27,14 @@ import PortsView from "./views/PortsView.vue";
 import VoiceView from "./views/VoiceView.vue";
 import PermissionsView from "./views/PermissionsView.vue";
 import ScreenView from "./views/ScreenView.vue";
+import VoicesView from "./views/VoicesView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import { loadPerms, missingRequired } from "./permissions";
 import InstallTray from "./components/InstallTray.vue";
 import RemoteScreen from "./components/RemoteScreen.vue";
 import { sess } from "./screen/session";
 
-const PAGES = ["overview", "dashboards", "apps", "discover", "jobs", "alerts", "logs", "bots", "voice", "webhooks", "storage", "ports", "permissions", "screen", "settings"] as const;
+const PAGES = ["overview", "dashboards", "apps", "discover", "jobs", "alerts", "logs", "bots", "voice", "voices", "webhooks", "storage", "ports", "permissions", "screen", "settings"] as const;
 type Page = (typeof PAGES)[number];
 const page = ref<Page>("overview");
 const navOpen = ref(false);
@@ -74,6 +75,7 @@ const ICON: Record<string, string> = {
   alerts: "M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
   bots: "M12 8V4H8M4 8h16v12H4zM9 13h.01M15 13h.01",
   voice: "M12 3v18M8 8v8M4 11v2M16 6v12M20 10v4",
+  voices: "M5 4h14v16H5zM9 9h6M9 13h6M9 17h3",
   webhooks: "M18 16.1A4 4 0 1 0 14 20H8M6 8a4 4 0 1 1 6.9 2.7L9 17M15 7.1A4 4 0 1 1 17 15",
   ports: "M4 7h16M4 12h16M4 17h16M8 4v6M14 9v6M18 14v6",
   permissions: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4",
@@ -85,7 +87,7 @@ const updateBadge = computed(() => S.update?.state === "failed" ? "!" : S.update
 const NAV = [
   { title: "", items: [["overview", "Overview"], ["dashboards", "Dashboards"], ["apps", "Apps"], ["discover", "Discover"]] },
   { title: "Automation", items: [["jobs", "Jobs"], ["alerts", "Alerts"], ["logs", "Logs"], ["webhooks", "Webhooks"]] },
-  { title: "Agents", items: [["voice", "Voice"], ["bots", "Bots"]] },
+  { title: "Agents", items: [["voice", "Voice"], ["voices", "Voices"], ["bots", "Bots"]] },
 ] as const;
 </script>
 
@@ -161,6 +163,7 @@ const NAV = [
         <LogsView v-else-if="page === 'logs'" />
         <BotsView v-else-if="page === 'bots'" />
         <VoiceView v-else-if="page === 'voice'" />
+        <VoicesView v-else-if="page === 'voices'" />
         <HooksView v-else-if="page === 'webhooks'" />
         <StorageView v-else-if="page === 'storage'" />
         <PortsView v-else-if="page === 'ports'" />
