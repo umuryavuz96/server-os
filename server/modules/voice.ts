@@ -1,12 +1,15 @@
 // Voice for the apps: the main bot's replies spoken by a local text-to-speech service: Kokoro
 // (~/projects/kokoro-tts, 127.0.0.1:8880, quick) or Chatterbox Turbo (~/projects/chatterbox-tts, 127.0.0.1:8881, the
-// more natural voice; voices named "chatterbox…" go there). Both speak the same API. Audio streams straight through as it is made, sentence by sentence:
+// more natural voice; voices named "chatterbox…" go there) or the Turkish voices (~/projects/xtts-tts, 127.0.0.1:8882;
+// voices named "tr-…": XTTS-v2 and Piper). All speak the same API. Audio streams straight through as it is made, sentence by sentence:
 // raw 16-bit mono PCM at 24 kHz, so an app can start playing before the whole reply is synthesized.
 import { config } from "../core/config";
 
 const base = () => (config.integrations as { tts?: string }).tts?.replace(/\/$/, "") ?? "http://127.0.0.1:8880";
 const chatterbox = () => (config.integrations as { ttsChatterbox?: string }).ttsChatterbox?.replace(/\/$/, "") ?? "http://127.0.0.1:8881";
-const serviceFor = (voice?: string) => (voice?.startsWith("chatterbox") ? chatterbox() : base());
+const turkish = () => (config.integrations as { ttsTurkish?: string }).ttsTurkish?.replace(/\/$/, "") ?? "http://127.0.0.1:8882";
+/** Which service speaks a voice, by name prefix: "tr-…" Turkish, "chatterbox…" Chatterbox Turbo, anything else Kokoro. */
+export const serviceFor = (voice?: string) => (voice?.startsWith("tr-") ? turkish() : voice?.startsWith("chatterbox") ? chatterbox() : base());
 
 /** Markdown and chat decoration read aloud badly: keep the words. */
 export function speakable(text: string): string {
@@ -32,9 +35,9 @@ export async function voices(): Promise<{ voices: string[]; rate: number } | nul
   const list = async (url: string) => {
     try { return await (await fetch(`${url}/v1/voices`, { signal: AbortSignal.timeout(3000) })).json() as { voices: string[]; rate: number }; } catch { return null; }
   };
-  const [k, c] = await Promise.all([list(base()), list(chatterbox())]);
-  if (!k && !c) return null;
-  return { voices: [...(c?.voices ?? []), ...(k?.voices ?? [])], rate: 24000 };
+  const [k, c, t] = await Promise.all([list(base()), list(chatterbox()), list(turkish())]);
+  if (!k && !c && !t) return null;
+  return { voices: [...(t?.voices ?? []), ...(c?.voices ?? []), ...(k?.voices ?? [])], rate: 24000 };
 }
 
 /** The service's streaming response (PCM), or null when it isn't running. */
