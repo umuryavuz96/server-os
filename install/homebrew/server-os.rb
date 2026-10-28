@@ -1,7 +1,7 @@
 # Homebrew formula for a tap (github.com/umuryavuz96/homebrew-tap):  brew install umuryavuz96/tap/server-os
 # Update url + sha256 on each release (the release workflow prints the checksums in SHA256SUMS).
 class ServerOS < Formula
-  desc "Home server run by an AI agent: setup wizard, live panel, apps, jobs, iPhone/iPad apps"
+  desc "Home server run by an AI agent: setup wizard, live panel, apps and jobs"
   homepage "https://github.com/umuryavuz96/server-os"
   url "https://github.com/umuryavuz96/server-os/releases/download/v0.1.0/server-os-v0.1.0.tar.gz"
   sha256 "REPLACE_WITH_SHA256_OF_THE_RELEASE_TARBALL"
