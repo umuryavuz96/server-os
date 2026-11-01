@@ -5,9 +5,9 @@
   <img src="docs/assets/brand/wordmark-light.svg" alt="Server OS" width="320">
 </picture>
 
-### A home server you run with an AI agent.
+### A self-hosted home server dashboard for macOS (Mac mini) and Linux, run with an AI agent.
 
-Live panel · app on/off switches · jobs · alerts · a root [Claude Code](https://claude.com/claude-code) agent · iPhone app (coming soon)
+Live vitals · real app on/off switches · scheduled jobs · alerts · a root [Claude Code](https://claude.com/claude-code) agent · iPhone app (coming soon). Built with Bun + Vue.
 
 [![CI](https://github.com/umuryavuz96/server-os/actions/workflows/ci.yml/badge.svg)](https://github.com/umuryavuz96/server-os/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Release](https://img.shields.io/github/v/release/umuryavuz96/server-os?include_prereleases)](https://github.com/umuryavuz96/server-os/releases) ![Platform: macOS first, Linux experimental](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20(experimental)-lightgrey) ![Status: early preview](https://img.shields.io/badge/status-early%20preview-orange)
 
@@ -27,6 +27,25 @@ Live panel · app on/off switches · jobs · alerts · a root [Claude Code](http
 - **Switches that work.** Every app has a real on/off switch. It asks first, and the change goes into an audit log.
 - **An agent that does the chores.** A pre-instructed Claude Code session, on your own Claude subscription, installs apps, schedules jobs, diagnoses problems and explains what happened.
 - **Yours, and open.** Self-hosted, MIT licensed, plain files in `~/server-os`, and a documented [OpenAPI](spec/openapi.yaml) API. Nothing leaves your machine unless you add an integration.
+
+## How it compares
+
+Homepage, Homarr and Dashy are great at what they do: a start page that links to your services. Server OS is closer to a control panel for the machine itself. Pick the one that fits.
+
+| | Homepage | Homarr | Dashy | Server OS |
+|---|---|---|---|---|
+| Main job | Start page with service widgets | Start page with integrations | Start page, highly themeable | Control panel for the host |
+| Live CPU, RAM, disk, swap, network | Widgets | Widgets | Widgets | Built in, over one SSE stream |
+| Start and stop apps from the panel | No | Some Docker actions | No | Yes (Docker, launchd, VMs), confirmed and audited |
+| Scheduled jobs and alerts | No | No | No | Built-in scheduler, run history, alerts |
+| Install apps | No | No | No | One click from 1,600+ self-hostable apps |
+| AI agent that does the chores | No | No | No | Yes (Claude Code, your own subscription) |
+| Config | YAML | UI | YAML / UI | UI, plus plain files and an OpenAPI API |
+| macOS (Mac mini) as a first-class host | Works (Docker) | Works (Docker) | Works (Docker) | Native launchd service, tested on a Mac mini M4 |
+
+_Based on each project's documented features at the time of writing; check their docs for the latest._
+
+Server OS does not try to be a pretty launcher for dozens of links. If that is all you need, use one of those. They also run happily next to it.
 
 ## Features
 
@@ -370,7 +389,7 @@ Native iPhone and iPad apps (SwiftUI) talk to the same API and pair with `server
 
 ## Roadmap
 
-- [ ] First tagged release (0.1.0) with published binaries and Homebrew tap
+- [x] First tagged release with published binaries and Homebrew tap (see [releases](https://github.com/umuryavuz96/server-os/releases))
 - [ ] Test and harden Linux (systemd, Docker)
 - [ ] Public iOS and iPadOS app release
 - [ ] More curated app recipes
