@@ -282,7 +282,8 @@ if (DEMO) api.get("/bots/:ch/feed", (c) => streamSSE(c, async (stream) => {
   while (!stream.aborted) { await stream.sleep(15_000); await stream.writeSSE({ event: "ping", data: "" }); }
 }));
 botRoutes(api, COS, NATIVE, (c) => onServer(c));
-agmsgNetRoutes(api);
+// Demo mode must never read the real agent network (it held real team names and paths).
+if (!DEMO) agmsgNetRoutes(api);
 agentHooksRoutes(api);
 modelRoutingRoutes(api);
 arsenalRoutes(api);
@@ -776,7 +777,7 @@ api.get("/screen/resolution", async (c) => {
 
 // v1-only: server info, pairing, devices.
 const CAPABILITIES = ["system", "update", "history", "apps", "jobs", "scheduler", "webhooks", "catalog", "install", "logs-traces", "audit", "dashboards", "ports", "alerts", "logs", "claude", "usage", "pairing", ...(process.platform === "darwin" || process.platform === "linux" ? ["permissions"] : []),
-  ...(BOTS_PROVIDER || DEMO ? ["bots"] : []), ...(agmsgNetAvailable() ? ["agmsg"] : []), ...(storageAvailable() ? ["storage"] : []), ...(agentAvailable() ? ["agent"] : []), "voice", ...(haConfigured() && config.integrations.house === true ? ["house"] : []), ...(houseVoiceAvailable() ? ["houseVoice"] : []), ...(screenConfig() && !DEMO ? ["screen"] : []), ...(voiceSessionAvailable() || DEMO ? ["voiceSession"] : []), ...(sttInfo().available || DEMO ? ["stt"] : [])];
+  ...(BOTS_PROVIDER || DEMO ? ["bots"] : []), ...(!DEMO && agmsgNetAvailable() ? ["agmsg"] : []), ...(storageAvailable() ? ["storage"] : []), ...(agentAvailable() ? ["agent"] : []), "voice", ...(haConfigured() && config.integrations.house === true ? ["house"] : []), ...(houseVoiceAvailable() ? ["houseVoice"] : []), ...(screenConfig() && !DEMO ? ["screen"] : []), ...(voiceSessionAvailable() || DEMO ? ["voiceSession"] : []), ...(sttInfo().available || DEMO ? ["stt"] : [])];
 // addresses: where this panel answers (Caddy names → this port), so the panel and the apps can show "open on other devices".
 api.get("/info", (c) => c.json({ name: config.name, version: VERSION, api: "v1", auth: config.auth, platform: process.platform, capabilities: CAPABILITIES, addresses: panelAddresses(PORT) }));
 // Liveness for the self-updater's health check (and load balancers): open, cheap, says which version answers.
