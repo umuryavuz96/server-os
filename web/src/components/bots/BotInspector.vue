@@ -6,6 +6,7 @@ import { ref, computed, onUnmounted, watch } from "vue";
 import { api, toast, post, type BotSession } from "../../store";
 import { family, modelLabel, dur, clock, type Meta, type BgJob } from "../../bots";
 import JobDetail from "./JobDetail.vue";
+import BotApprovals from "./BotApprovals.vue";
 
 const props = defineProps<{ bot: BotSession; meta: Meta | null }>();
 const emit = defineEmits<{ newJob: []; restart: []; stop: []; instructions: []; remove: []; workspace: [] }>();
@@ -83,6 +84,7 @@ const PRESET: Record<string, string> = { safe: "Safe", dev: "Dev", full: "Full" 
 
 <template>
   <aside class="bi" aria-label="Session">
+    <BotApprovals class="apv-side" :channel="ch" :items="meta?.approvals ?? []" />
     <section class="bi-s">
       <h3>Session</h3>
       <div class="bi-f">
@@ -107,14 +109,14 @@ const PRESET: Record<string, string> = { safe: "Safe", dev: "Dev", full: "Full" 
     <section class="bi-s">
       <div class="bi-t"><h3>Running in the background</h3><span class="num">{{ liveCount }} running</span><button type="button" class="btn sm" :disabled="!bot.running" @click="emit('newJob')">+ New</button></div>
       <div v-for="r in open" :key="r.id" class="bj" :class="r.status">
-        <div class="bj-h"><span class="kd" :class="r.kind">{{ KIND[r.kind] }}</span><b>{{ r.name }}</b><span class="st" :class="r.status">{{ r.status === "failed" ? "FAILED" : "PENDING" }}</span></div>
+        <div class="bj-h"><span class="kd" :class="`kd-${r.kind}`">{{ KIND[r.kind] }}</span><b>{{ r.name }}</b><span class="st" :class="r.status">{{ r.status === "failed" ? "FAILED" : "PENDING" }}</span></div>
         <p class="bj-w">{{ r.what }}</p>
         <p class="bj-m">{{ r.status === "failed" ? `Failed: ${r.reason}` : `Sent ${clock(r.created)} · ${r.id} · waiting for the bot to set it up…` }}</p>
         <div class="bj-a"><button type="button" class="btn sm ghost" @click="dismiss(r.id)">{{ r.status === "failed" ? "Dismiss" : "Forget it" }}</button></div>
       </div>
       <div v-for="j in live" :key="j.id" class="bj tap" role="button" tabindex="0" @click="detail = j.id" @keydown.enter.self="detail = j.id">
         <div class="bj-h">
-          <span class="kd" :class="j.kind">{{ KIND[j.kind] }}</span><b>{{ reqFor(j)?.name ?? j.name }}</b>
+          <span class="kd" :class="`kd-${j.kind}`">{{ KIND[j.kind] }}</span><b>{{ reqFor(j)?.name ?? j.name }}</b>
           <button type="button" class="sw sm" role="switch" :aria-checked="!j.ended" :aria-label="`${j.ended ? 'Start' : 'Stop'} ${j.name}`" :class="{ busy: busy === 'job:' + j.id }" :disabled="!bot.running || !!busy" @click.stop="toggleJob(j)" @keydown.enter.stop></button>
         </div>
         <p v-if="reqFor(j)" class="bj-w">{{ reqFor(j)!.what }}</p>
@@ -131,7 +133,7 @@ const PRESET: Record<string, string> = { safe: "Safe", dev: "Dev", full: "Full" 
     <section v-if="meta?.schedules.length" class="bi-s">
       <h3>Scheduled by the bot</h3>
       <div v-for="s in meta.schedules" :key="s.id" class="bj">
-        <div class="bj-h"><span class="kd schedule">CRON</span><b class="num">{{ s.cron }}</b>
+        <div class="bj-h"><span class="kd kd-schedule">CRON</span><b class="num">{{ s.cron }}</b>
           <button type="button" class="sw sm" role="switch" aria-checked="true" :aria-label="`Cancel ${s.cron}`" :disabled="!bot.running || !!busy" @click="act('sch:' + s.id, `/schedules/${enc(s.id)}/stop`)"></button></div>
         <p class="bj-w">{{ s.prompt.length > 160 ? s.prompt.slice(0, 160) + "…" : s.prompt }}</p>
         <p class="bj-m">{{ s.recurring ? "Repeats" : "Once" }} · set {{ clock(s.created) }} · ends when the session does</p>

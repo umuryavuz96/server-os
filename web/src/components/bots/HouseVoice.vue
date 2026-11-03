@@ -1,10 +1,12 @@
 <script setup lang="ts">
-// The desk speaker (/api/v1/house-voice): the wake-word listener that talks to Lahmacun's voice session.
+// The desk speaker (/api/v1/house-voice): the wake-word listener that talks to the voice assistant's session.
 // On/off, what it is doing right now, the last thing it heard, the language you speak and its volume. Its voice is
 // picked in VoicePicker, below it on the Voice page.
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { api, toast } from "../../store";
 import Icon from "../Icon.vue";
+
+const props = withDefaults(defineProps<{ name?: string }>(), { name: "" });
 
 type HV = { available: boolean; voice: string; enabled: boolean; running: boolean; state: string; detail: string | null; heard: string | null; reply: string | null; volume: number; followUp: number; language?: string };
 const hv = ref<HV | null>(null), busy = ref(false), vol = ref(10);
@@ -21,8 +23,8 @@ async function set(patch: Partial<HV>) {
 onMounted(() => { void load(); poll = setInterval(load, 2000); });
 onUnmounted(() => { if (poll) clearInterval(poll); });
 
-const LABEL: Record<string, string> = { idle: "Say “Hey Jarvis” to talk", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking", starting: "Starting…", offline: "Speaker not connected", off: "Off" };
-const line = computed(() => (hv.value ? hv.value.detail && hv.value.state === "offline" ? hv.value.detail : LABEL[hv.value.state] ?? hv.value.state : ""));
+const LABEL = computed<Record<string, string>>(() => ({ idle: props.name ? `Say “Hey Jarvis” to talk to ${props.name}` : "Say “Hey Jarvis” to talk", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking", starting: "Starting…", offline: "Speaker not connected", off: "Off" }));
+const line = computed(() => (hv.value ? hv.value.detail && hv.value.state === "offline" ? hv.value.detail : LABEL.value[hv.value.state] ?? hv.value.state : ""));
 const dot = computed(() => (!hv.value?.enabled ? "" : hv.value.state === "offline" ? "warn" : ["listening", "thinking", "speaking"].includes(hv.value.state) ? "work" : "on"));
 </script>
 

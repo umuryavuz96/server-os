@@ -12,10 +12,15 @@ const turkish = () => (config.integrations as { ttsTurkish?: string }).ttsTurkis
 /** Which service speaks a voice, by name prefix: "tr-…" Turkish, "chatterbox…" Chatterbox Turbo, anything else Kokoro. */
 export const serviceFor = (voice?: string) => (voice?.startsWith("tr-") ? turkish() : voice?.startsWith("chatterbox") ? chatterbox() : base());
 
-/** Markdown and chat decoration read aloud badly: keep the words. */
+/** Markdown and chat decoration read aloud badly: keep the words. Component blocks for the chat screen (```card,
+ *  ```sources, ```chart, see docs/voice-chat.md) and code are for the eye only; a table keeps its cell text. */
 export function speakable(text: string): string {
   return text
-    .replace(/```[\s\S]*?```/g, " ")                 // code blocks: not for the ear
+    .replace(/```[\s\S]*?(```|$)/g, " ")             // code and component blocks (also one left open at the end)
+    .replace(/<details>[\s\S]*?<\/details>/gi, " ")
+    .replace(/<\/?[a-z][^>]*>/gi, " ")
+    .replace(/^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)*\|?[ \t]*\n?/gm, "") // table rule lines
+    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row: string) => row.split("|").map((c) => c.trim()).filter(Boolean).join(", ") + ".")
     .replace(/`([^`]+)`/g, "$1")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")          // links: their text
@@ -25,6 +30,7 @@ export function speakable(text: string): string {
     .replace(/[*_~|>]+/g, "")
     .replace(/\p{Extended_Pictographic}/gu, "")
     .replace(/[ \t]+/g, " ")
+    .replace(/\n[ \t]*(\n[ \t]*)+/g, "\n\n")
     .trim();
 }
 

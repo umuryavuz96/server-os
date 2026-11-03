@@ -20,7 +20,9 @@ export interface Integrations {
   /** Claude OS bot manager API (tmux bot sessions), e.g. http://127.0.0.1:3090/api — enables the Bots tab. */
   claudeOS?: string;
   /** Home Assistant: URL + the ~/.env variable that holds a long-lived token. */
-  homeAssistant?: { url: string; tokenEnv?: string };
+  homeAssistant?: { url: string; tokenEnv?: string;
+    /** Domains the dashboard cards may call services on (default: light, switch, fan, climate, media_player, scene, script, input_boolean, cover). Locks, alarms and buttons stay out unless you add them. */
+    allowDomains?: string[] };
   /** AdGuard Home admin API + ~/.env variables for its user/password; unbound: read unbound-control stats. */
   adguard?: { url: string; userEnv?: string; passwordEnv?: string };
   unbound?: boolean;
@@ -34,10 +36,21 @@ export interface Integrations {
   /** Folder with one sub-folder per Claude Code Telegram channel (launch.command, bot.pid, run.pid). Default for telegramBots: ~/.claude/channels.
    *  Also where the claudeOS provider reads each bot's launch flags. */
   channelsDir?: string;
+  /** Feature flag for the 3D House tab. Off unless true (and homeAssistant is set). Your own plan lives in config/house.json (saved from the tab); until then a generic sample shows. */
+  house?: boolean;
   /** Desk speaker (wake-word listener) and the bot session it talks to. Off unless set. dir: the listener project (listen.py,
    *  config.json, status.json); session: its tmux session (default house-voice). voiceLaunch: script that starts the bot's
    *  voice session, kept up by a watchdog in tmux session voiceSession (default bot-voice); it powers the app's voice screen. */
-  houseVoice?: { dir?: string; session?: string; voiceSession?: string; voiceLaunch?: string };
+  houseVoice?: { dir?: string; session?: string; voiceSession?: string; voiceLaunch?: string;
+    /** The voice assistant's name in the panel (default: the first heading of the voice session's CLAUDE.md). channel: its bot channel (default "voice"). */
+    name?: string; channel?: string };
+  /** Speech to text for the voice chat: whisper.cpp's CLI and a ggml model (defaults: whisper-cli on PATH or Homebrew,
+   *  the first of ~/.whisper-models/ggml-small.bin, ggml-base.bin, ggml-base.en.bin) and ffmpeg to decode browser clips. */
+  stt?: { whisper?: string; model?: string; ffmpeg?: string };
+  /** Speakers the voice chat can answer on, through Home Assistant's media_player.play_media (e.g. a Sonos). entities: the
+   *  media_player ids (default: Home Assistant players named "Sonos…"); baseUrl: this panel's address as the speaker can
+   *  reach it on the home network (e.g. http://192.168.1.10), used for the reply clip it fetches. Output only. */
+  speakers?: { baseUrl?: string; entities?: string[] };
   /** Cloud voices (ElevenLabs): the ~/.env variable holding the API key (default ELEVENLABS_API_KEY; "User: read" permission shows usage on the Voice page). */
   elevenLabs?: { keyEnv?: string };
   /** A folder with catalog.json (+ gates/, icons/, off-containers.txt) that lists apps you manage outside the installer. Off unless set. */
@@ -51,6 +64,11 @@ export interface Integrations {
   /** Existing webhook listeners to watch (launchd service + port + log file). */
   webhooks?: { slug: string; label: string; description: string; service: string; port: number; log: string }[];
 }
+/** Usage + Costs tabs. envFile: the file whose variable NAMES are matched against server/modules/usageProviders.json (default ~/.env; values are read only to call a provider's own usage API).
+ *  currency/usdRate: what totals are shown in and how many of it one USD is worth (list prices in the registry are USD). kwhPrice: electricity per kWh in `currency`.
+ *  power: this machine's draw: idleW/maxW override the built-in table (server/modules/machinePower.json); haEntity = a Home Assistant power sensor (W or kW) that replaces the estimate.
+ *  modelPrices: JSON file with per-model $/MTok that overrides server/modules/modelPrices.json. */
+export interface CostsConfig { envFile?: string; currency?: string; usdRate?: number; kwhPrice?: number; power?: { idleW?: number; maxW?: number; haEntity?: string }; modelPrices?: string }
 export interface AppsConfig {
   /** Give each installed app an address. command runs after the install with {id} and {port} filled in
    *  (e.g. a reverse-proxy + DNS helper); url is the address it makes, e.g. "http://{id}.home". */
@@ -83,9 +101,12 @@ export interface Config {
    *  sessions itself in tmux; the default otherwise) or both (Claude OS bots and native bots side by side). prefix: tmux session prefix for native bots (default "sos-").
    *  team: the agmsg team every native bot joins (default "server-os"); agmsg.dir / agmsg.storage: another agmsg install
    *  or message store (AGMSG_STORAGE_PATH). telegram.ownerChatIds: chats pre-approved in every bot's Telegram access.json. */
-  bots?: { provider?: "claudeOS" | "native" | "both"; prefix?: string; team?: string; agmsg?: { dir?: string; storage?: string }; telegram?: { ownerChatIds?: (string | number)[] } };
+  bots?: { provider?: "claudeOS" | "native" | "both"; prefix?: string; team?: string; agmsg?: { dir?: string; storage?: string }; telegram?: { ownerChatIds?: (string | number)[] };
+    /** Command that tells you a bot is waiting on a permission ask; the message is appended as its last argument (e.g. [python3, tg_rich.py, --bot, notify, --text]). */ approvalPing?: string[] };
   /** Optional local names for apps (jellyfin.home): see server/modules/names.ts. Set up by the wizard. */
   names?: import("../modules/names").NamesConfig;
+  /** Usage + Costs tabs: see CostsConfig. */
+  costs?: CostsConfig;
   /** Optional OpenTelemetry export: logs are also sent to <endpoint>/v1/logs (OTLP/HTTP JSON). */
   otlp?: { endpoint: string; headers?: Record<string, string> };
 }
@@ -110,7 +131,9 @@ export const config = loadConfig();
 const tilde = (p: string) => p.replace(/^~(?=\/|$)/, HOME);
 for (const k of ["history", "cards", "logs"] as const) if (config.integrations.cron?.[k]) config.integrations.cron[k] = tilde(config.integrations.cron[k]!);
 if (config.integrations.channelsDir) config.integrations.channelsDir = tilde(config.integrations.channelsDir);
+if (config.integrations.stt) for (const k of ["whisper", "model", "ffmpeg"] as const) if (config.integrations.stt[k]) config.integrations.stt[k] = tilde(config.integrations.stt[k]!);
 for (const k of ["dir", "voiceLaunch"] as const) if (config.integrations.houseVoice?.[k]) config.integrations.houseVoice[k] = tilde(config.integrations.houseVoice[k]!);
+for (const k of ["envFile", "modelPrices"] as const) if (config.costs?.[k]) config.costs[k] = tilde(config.costs[k]!);
 if (config.integrations.catalog) config.integrations.catalog = tilde(config.integrations.catalog);
 for (const k of ["dir", "storage"] as const) if (config.bots?.agmsg?.[k]) config.bots.agmsg[k] = tilde(config.bots.agmsg[k]!);
 export const STATE_DIR = config.stateDir ? tilde(config.stateDir) : join(ROOT, "data");

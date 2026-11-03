@@ -4,11 +4,17 @@ import AnimatedNumber from "./AnimatedNumber.vue";
 import { computed, ref, watch, onUnmounted } from "vue";
 
 export type Lvl = "g" | "a" | "r";
-const props = defineProps<{ label: string; value: string; unit: string; badge: string; level: Lvl; t: number[]; v: (number | null)[]; fmt: (v: number) => string; from: string; size?: "xl" | "md"; href?: string; minSpan?: number; metric?: string; ranges?: string[] }>();
+const props = defineProps<{ label: string; value: string; unit: string; badge: string; level: Lvl; t: number[]; v: (number | null)[]; fmt: (v: number) => string; from: string; size?: "xl" | "md"; href?: string; minSpan?: number; metric?: string; ranges?: string[];
+  /** Glass desktop: draw the trend as frosted bars with the current one in blue (the reel's chart). */
+  bars?: boolean;
+  /** A range picked from outside (the Overview's Live/Day/Week/Month pill); null = the live data. Ignored when this card has no such range. */
+  pick?: string | null }>();
 
 // ---- range button: one tap cycles through ranges; the first entry is the live data passed in ----
 const RSEC: Record<string, number> = { "1H": 3600, "2H": 7200, "6H": 21600, "24H": 86400, "7D": 604800, "30D": 2592000, "90D": 7776000 };
 const ri = ref(0);
+// the hovered point; declared before the watchers below (the `pick` watcher runs immediately and clears it)
+const box = ref<HTMLElement | null>(null), hi = ref<number | null>(null);
 const range = computed(() => props.ranges?.[ri.value] ?? null);
 const fetched = ref<{ t: number[]; v: (number | null)[] } | null>(null);
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -24,6 +30,7 @@ const resLabel = computed(() => {
   const raw = props.metric === "net" ? 3600 : 15, sec = Math.max(raw, (RSEC[r] ?? 7200) / 60);
   return sec < 60 ? `${Math.round(sec)}s` : sec < 3600 ? `${Math.round(sec / 60)}m` : sec < 86400 ? `${Math.round(sec / 3600)}h` : `${Math.round(sec / 86400)}d`;
 });
+watch(() => props.pick, (p) => { if (p === undefined) return; const i = p ? props.ranges?.indexOf(p) ?? -1 : 0; if (i >= 0) { ri.value = i; hi.value = null; } }, { immediate: true });
 const cycle = () => { ri.value = (ri.value + 1) % (props.ranges?.length ?? 1); hi.value = null; };
 const T = computed(() => (fetched.value ? fetched.value.t : props.t));
 const V = computed(() => (fetched.value ? fetched.value.v : props.v));
@@ -50,6 +57,19 @@ const X = (t: number) => { const s = scale.value!; return ((t - s.t0) / (s.t1 - 
 const Y = (v: number) => { const s = scale.value!; return 97 - ((v - s.lo) / (s.hi - s.lo)) * band.value; };
 const line = computed(() => (scale.value ? "M" + pts.value.map((p) => `${X(p.t).toFixed(2)},${Y(p.v).toFixed(2)}`).join("L") : ""));
 const area = computed(() => (line.value ? `${line.value}L100,100L${X(pts.value[0].t).toFixed(2)},100Z` : "")); // close under the first point, not at x=0
+// bars: a week reads as 7 days, otherwise 24 even slices of the window; the newest bar is the bright one
+const barList = computed(() => {
+  const p = pts.value, sc = scale.value; if (!props.bars || !sc || p.length < 2) return [];
+  const n = range.value === "7D" ? 7 : range.value === "30D" ? 30 : 24, w = (sc.t1 - sc.t0) / n, out: { v: number | null; t: number; lab: string }[] = [];
+  for (let b = 0; b < n; b++) {
+    const a = sc.t0 + b * w, g = p.filter((x) => x.t > a && x.t <= a + w);
+    out.push({ v: g.length ? g.reduce((s, x) => s + x.v, 0) / g.length : null, t: a + w, lab: n === 7 ? new Date((a + w / 2) * 1000).toLocaleDateString("en-GB", { weekday: "short" }) : "" });
+  }
+  const vs = out.map((x) => x.v).filter((v): v is number => v != null), top = Math.max(...vs), lo = Math.min(...vs);
+  const base = Math.max(0, lo - (top - lo || top || 1) * 0.6); // a floor under the lowest bar, so small changes still show
+  return out.map((x, i) => ({ ...x, h: x.v == null ? 0 : Math.max(4, ((x.v - base) / (top - base || 1)) * 100), now: i === out.length - 1 }));
+});
+const barHi = computed(() => { const h = hp.value; if (!h || !barList.value.length) return -1; const sc = scale.value!; return Math.min(barList.value.length - 1, Math.max(0, Math.floor(((h.t - sc.t0) / (sc.t1 - sc.t0)) * barList.value.length))); });
 const stroke = computed(() => (props.level === "r" ? "#ff2b3d" : props.level === "a" ? "#ffb21e" : "#f2f2f3"));
 const stats = computed(() => {
   const vs = T.value.map((_, i) => V.value[i]).filter((x): x is number => x != null);
@@ -67,7 +87,6 @@ const gap = computed(() => { const sc = scale.value, p = pts.value; if (!sc || !
 const reset = () => { ri.value = 0; hi.value = null; };
 const gid = "h" + Math.random().toString(36).slice(2, 8);
 
-const box = ref<HTMLElement | null>(null), hi = ref<number | null>(null);
 function track(e: PointerEvent) {
   const el = box.value; if (!el || !scale.value) return;
   const r = el.getBoundingClientRect(), fx = ((e.clientX - r.left) / r.width) * 100;
@@ -83,14 +102,17 @@ const when = (t: number) => new Date(t * 1000).toLocaleString("en-GB", { weekday
   <div ref="box" class="hero" :class="[size ?? 'md', 'l-' + level]" @pointermove="track" @pointerdown="track" @pointerleave="hi = null">
     <div v-if="gap" class="hero-gap" :style="{ width: gap + '%' }"><span>no data yet</span></div>
     <Transition name="rt" mode="out-in">
-    <svg v-if="line" :key="range ?? 'live'" class="hero-svg" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" :aria-label="`${label} trend since ${from}`">
+    <div v-if="bars && barList.length" :key="'b' + (range ?? 'live')" class="hero-bars" :class="{ lab: barList.length === 7 }" aria-hidden="true">
+      <span v-for="(b, i) in barList" :key="i" :class="{ now: b.now, hi: i === barHi }"><i :style="{ height: b.h + '%' }"></i><small v-if="b.lab">{{ b.lab }}</small></span>
+    </div>
+    <svg v-else-if="line" :key="range ?? 'live'" class="hero-svg" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" :aria-label="`${label} trend since ${from}`">
       <defs><linearGradient :id="gid" x1="0" x2="0" y1="0" y2="1"><stop offset="0" :stop-color="stroke" stop-opacity=".3" /><stop offset="1" :stop-color="stroke" stop-opacity="0" /></linearGradient></defs>
       <path :d="area" :fill="`url(#${gid})`" />
       <path :d="line" fill="none" :stroke="stroke" stroke-width="2.2" vector-effect="non-scaling-stroke" stroke-linejoin="round" />
       <line v-if="hp" :x1="X(hp.t)" :x2="X(hp.t)" :y1="100 - band - 4" y2="100" stroke="rgba(242,242,243,.45)" stroke-width="1" vector-effect="non-scaling-stroke" />
     </svg>
     </Transition>
-    <span v-if="hp" class="hero-dot" :style="{ left: X(hp.t) + '%', top: Y(hp.v) + '%', background: stroke }"></span>
+    <span v-if="hp && !bars" class="hero-dot" :style="{ left: X(hp.t) + '%', top: Y(hp.v) + '%', background: stroke }"></span>
     <div class="hero-top">
       <div class="hero-l"><span>{{ label }}</span><a v-if="href" :href="href" class="hero-a">Open →</a></div>
       <div class="hero-v">
@@ -101,7 +123,7 @@ const when = (t: number) => new Date(t * 1000).toLocaleString("en-GB", { weekday
     </div>
     <div class="hero-x"><span>{{ fromLabel }}</span><span v-if="stats" class="hero-st">min {{ fmt(stats.min) }} · avg {{ fmt(stats.avg) }} · max {{ fmt(stats.max) }}</span><span>now</span></div>
     <button v-if="ranges && ranges.length > 1" type="button" class="hero-rng" :aria-label="`Time range ${range}, one point per ${resLabel}; tap for the next range`" @click.stop="cycle" @pointermove.stop @pointerdown.stop>{{ range }}<small> · {{ resLabel }}</small></button>
-    <Transition name="rt"><button v-if="ri > 0" type="button" class="hero-rst" :aria-label="`Back to ${ranges?.[0]}`" @click.stop="reset" @pointermove.stop @pointerdown.stop>↺</button></Transition>
+    <Transition name="rt"><button v-if="ri > 0 && (pick === undefined || range !== pick)" type="button" class="hero-rst" :aria-label="`Back to ${ranges?.[0]}`" @click.stop="reset" @pointermove.stop @pointerdown.stop>↺</button></Transition>
     <slot />
   </div>
 </template>

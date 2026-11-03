@@ -10,7 +10,9 @@ export interface FeedItem {
   text?: string; via?: Via; from?: string; nonce?: string;
   local?: "sending" | "queued" | "failed"; error?: string; // set only on the page's own optimistic bubbles
   tool?: string; title?: string; detail?: string; status?: "running" | "ok" | "error"; ms?: number; out?: string;
+  sources?: WebSource[]; summary?: string; // WebSearch / WebFetch steps
 }
+export interface WebSource { title: string; url: string; domain: string; snippet?: string; error?: string }
 export interface BgJob {
   id: string; taskId: string | null; kind: "monitor" | "shell" | "agent"; name: string; command: string;
   started: number; ended: number | null; endReason: string | null; events: number; lastEvent: string | null; lastEventAt: number | null;
@@ -21,9 +23,10 @@ export interface BotRequest {
   id: string; channel: string; kind: "watch" | "schedule" | "task"; name: string; what: string; created: number;
   options: Record<string, string | boolean | undefined>; status: "pending" | "running" | "failed"; reason: string | null; job: string | null;
 }
+export interface Approval { id: string; channel: string; tool: string; summary: string; created: number; expires: number; cwd: string; input: Record<string, string>; canAlways: boolean }
 export interface Meta {
   session: { session: string; model: string | null; contextTokens: number; contextLimit: number; permissionMode: string | null; working: { since: number; step: string | null } | null; lastActivity: number } | null;
-  effort: string | null; launchModel: string | null; jobs: BgJob[]; schedules: Schedule[]; requests: BotRequest[];
+  effort: string | null; launchModel: string | null; jobs: BgJob[]; schedules: Schedule[]; requests: BotRequest[]; approvals: Approval[];
   running: boolean; protected: boolean; tmux: boolean;
 }
 

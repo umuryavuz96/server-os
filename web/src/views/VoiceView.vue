@@ -1,44 +1,66 @@
 <script setup lang="ts">
-// Voice: Lahmacun's voice session (channel "voice", ~/bots/voice): the same identity as the main bot in its own
-// conversation, fed by the apps' voice screen and the desk speaker. One fluid page: the speaker and the cloud credits
-// side by side when there is room, the voice picker (every installed voice, with a sample each), the chat live, and
-// the open-source voices to try folded away at the end.
-import { ref } from "vue";
-import { useFeed } from "../bots";
-import BotFeed from "../components/bots/BotFeed.vue";
+// Voice: the voice assistant's session (integrations.houseVoice; the bot channel "voice" by default), the same identity
+// as the owner's main bot in its own conversation, fed by the apps' voice screen, the desk speaker and this chat.
+// Two tabs: Chat (the full chat with voice mode, VoiceChat) and Voices (the desk speaker, cloud credits, the voice it
+// answers with, and open-source voices to try). The assistant's name comes from the server (/voice/chat), never
+// from this file.
+import { ref, onMounted } from "vue";
+import { api } from "../store";
 import HouseVoice from "../components/bots/HouseVoice.vue";
 import VoiceCloud from "../components/bots/VoiceCloud.vue";
 import VoicePicker from "../components/bots/VoicePicker.vue";
 import VoiceCatalog from "../components/bots/VoiceCatalog.vue";
+import VoiceChat, { type ChatInfo } from "../components/voice/VoiceChat.vue";
 
 // session: the voice session exists on this server (without it there is no conversation to show, only the voices).
-withDefaults(defineProps<{ session?: boolean }>(), { session: true });
-const { grouped, meta, state } = useFeed(ref("voice"));
+const props = withDefaults(defineProps<{ session?: boolean }>(), { session: true });
+const info = ref<ChatInfo | null>(null), err = ref<string | null>(null);
+const tab = ref<"chat" | "voices">(props.session ? (location.hash.includes("voices") ? "voices" : "chat") : "voices");
 const cloudOn = ref<boolean | undefined>();
+async function load() { try { info.value = await api<ChatInfo>("/voice/chat"); err.value = null; } catch (e) { err.value = (e as Error).message; } }
+onMounted(load);
+const name = () => info.value?.name ?? "the assistant";
+function pick(t: "chat" | "voices") { tab.value = t; history.replaceState(null, "", t === "voices" ? "#voice?voices" : "#voice"); }
 </script>
 
 <template>
-  <main class="page vv">
-    <header class="ph">
+  <main class="vv" :class="{ 'vv-chatmode': tab === 'chat' }">
+    <header class="vv-h">
       <h1>Voice</h1>
-      <p class="meta">Talk to Lahmacun from the app's voice screen or the desk speaker. Choose the voice it answers with.</p>
+      <div v-if="session" class="seg2 vv-tabs" role="tablist" aria-label="Voice">
+        <button type="button" role="tab" :aria-selected="tab === 'chat'" @click="pick('chat')">Chat</button>
+        <button type="button" role="tab" :aria-selected="tab === 'voices'" @click="pick('voices')">Voices &amp; speaker</button>
+      </div>
     </header>
-    <div class="vv-pair"><HouseVoice /><VoiceCloud @change="cloudOn = $event" /></div>
-    <VoicePicker :cloud-on="cloudOn" />
-    <section v-if="session" class="vv-chat card" aria-label="Voice conversation">
-      <div class="vt"><span>Conversation</span><span :class="{ 'vv-live': state === 'live' }">{{ state === "live" ? (meta?.session?.working ? "thinking…" : "live") : state }}</span></div>
-      <p v-if="!grouped.length" class="meta">Nothing said yet.</p>
-      <BotFeed v-else :blocks="grouped" :meta="meta" name="voice" :can-interrupt="false" />
-    </section>
-    <VoiceCatalog />
+    <template v-if="tab === 'chat'">
+      <VoiceChat v-if="info" class="vv-chat" :info="info" @refresh="load">
+        <template #side><HouseVoice v-if="info.deskSpeaker.available" :name="info.name" /></template>
+      </VoiceChat>
+      <p v-else-if="err" class="vv-err">{{ err }}</p>
+      <p v-else class="meta vv-err">Loading…</p>
+    </template>
+    <div v-else class="vv-voices">
+      <p class="meta">Talk to {{ name() }} from the chat, the app's voice screen or the desk speaker. Choose the voice it answers with.</p>
+      <div class="vv-pair"><HouseVoice :name="name()" /><VoiceCloud @change="cloudOn = $event" /></div>
+      <VoicePicker :cloud-on="cloudOn" :name="name()" />
+      <VoiceCatalog :name="name()" />
+    </div>
   </main>
 </template>
 
 <style scoped>
 .vv{display:flex;flex-direction:column;gap:14px;max-width:1100px}
-.vv .ph{flex-direction:column;align-items:flex-start;gap:4px}
+.vv-h{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.vv-tabs{height:auto}.vv-tabs button{min-height:34px;padding:0 12px}
+.vv-voices{display:flex;flex-direction:column;gap:14px}
+.vv-voices>.meta{margin:0}
 /* the status strip reflows with the width: one column on a phone, two from about 640px */
 .vv-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
-.vv-chat{display:flex;flex-direction:column;gap:10px;min-height:240px;max-height:min(640px,calc(100vh - 200px));border-radius:16px;padding:14px}
-.vv-live{color:var(--on)}
+.vv-err{padding:16px}
+.vv.vv-chatmode{max-width:none;gap:0;height:100dvh;min-height:480px}
+.vv-chatmode .vv-h{padding:10px 16px;border-bottom:1px solid #1f1f23;background:#0b0b0d}
+.vv-chatmode .vv-h h1{font-size:19px}
+.vv-chat{flex:1;min-height:0}
+@media(max-width:860px){.vv.vv-chatmode{height:calc(100dvh - 52px)}.vv-chatmode .vv-h{padding:0 12px 8px;border-bottom:0;background:none}}
+@media(max-width:620px){.vv-chatmode .vv-h h1{display:none}.vv-chatmode .vv-tabs{flex:1}}
 </style>

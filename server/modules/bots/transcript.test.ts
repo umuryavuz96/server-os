@@ -13,14 +13,14 @@ function file(lines: string) { const d = mkdtempSync(join(tmpdir(), "sd-bots-"))
 
 test("telegram in, tool steps, telegram reply out", () => {
   const p = file(
-    user("u1", '<channel source="plugin:telegram:telegram" chat_id="1" user="umur" ts="x">What\'s up?</channel>', 0, { isMeta: true, origin: { kind: "channel" } }) +
+    user("u1", '<channel source="plugin:telegram:telegram" chat_id="1" user="alex" ts="x">What\'s up?</channel>', 0, { isMeta: true, origin: { kind: "channel" } }) +
     asst("a1", [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "ls", description: "List files" } }], 1) +
     user("r1", [{ type: "tool_result", tool_use_id: "t1", content: "a\nb" }], 3) +
     asst("a2", [{ type: "tool_use", id: "t2", name: "mcp__plugin_telegram_telegram__reply", input: { chat_id: "1", text: "**All good**" } }], 4) +
     L({ type: "system", subtype: "turn_duration", timestamp: T(5) }));
   const t = new Transcript(p); t.update();
   expect(t.items.map((i) => `${i.kind}/${i.via ?? i.status}`)).toEqual(["user/telegram", "step/ok", "step/running", "assistant/telegram"]);
-  expect(t.items[0]).toMatchObject({ text: "What's up?", from: "umur" });
+  expect(t.items[0]).toMatchObject({ text: "What's up?", from: "alex" });
   expect(t.items[1]).toMatchObject({ title: "List files", ms: 2000, out: "a\nb" });
   expect(t.meta.working).toBeNull();
   expect(t.meta.contextTokens).toBe(50_010);
@@ -87,4 +87,52 @@ test("an idle compaction does not leave the bot working", () => {
   const t = new Transcript(p); t.update();
   expect(t.meta.working).toBeNull();
   expect(t.items.at(-1)).toMatchObject({ kind: "event", text: "Compacted" });
+});
+
+// Seen live 2026-10-30: a session running an agent team writes no turn_duration after its answers (Claude Code holds it
+// back while teammates are alive), so the voice chat sat on "Working · thinking" until the user pressed Stop.
+test("a turn ends on the Stop-hook summary or an end_turn answer, without turn_duration", () => {
+  const done = (uuid: string, content: unknown[], s: number, stop_reason: string) =>
+    L({ type: "assistant", uuid, timestamp: T(s), message: { role: "assistant", model: "claude-opus-5-5", content, stop_reason } });
+  const stopHooks = (s: number, extra = {}) => L({ type: "system", subtype: "stop_hook_summary", hookCount: 2, preventedContinuation: false, timestamp: T(s), ...extra });
+  // stop_hook_summary alone (assistant line without a stop_reason)
+  const a = new Transcript(file(user("u1", "[Voice tr] merhaba", 0) + asst("a1", [{ type: "text", text: "Merhaba!" }], 1)));
+  a.update();
+  expect(a.meta.working).not.toBeNull();
+  appendFileSync(a.path, stopHooks(2)); a.update();
+  expect(a.meta.working).toBeNull();
+  // end_turn alone, after a tool step: the step's tool_use (stop_reason tool_use) keeps it working, the answer ends it
+  const b = new Transcript(file(user("u1", "[Voice] print it", 0) +
+    done("a1", [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "lp x", description: "Print" } }], 1, "tool_use") +
+    user("r1", [{ type: "tool_result", tool_use_id: "t1", content: "ok" }], 2)));
+  b.update();
+  expect(b.meta.working).toMatchObject({ step: "Print" });
+  appendFileSync(b.path, done("a2", [{ type: "text", text: "Printed." }], 3, "end_turn")); b.update();
+  expect(b.meta.working).toBeNull();
+  // a sub-agent's (sidechain) Stop hooks or end_turn don't end the main turn
+  const c = new Transcript(file(user("u1", "hello", 0) + stopHooks(1, { isSidechain: true }) +
+    L({ type: "assistant", uuid: "s1", isSidechain: true, timestamp: T(2), message: { role: "assistant", content: [{ type: "text", text: "sub" }], stop_reason: "end_turn" } })));
+  c.update();
+  expect(c.meta.working).not.toBeNull();
+  // a later message starts the next turn as before
+  appendFileSync(b.path, user("u2", "and again", 4)); b.update();
+  expect(b.meta.working).toMatchObject({ since: Date.parse(T(4)) });
+});
+
+test("task list: TodoWrite replaces, latest wins", () => {
+  const p = file(
+    asst("a1", [{ type: "tool_use", id: "w1", name: "TodoWrite", input: { todos: [{ content: "Plan", status: "in_progress", activeForm: "Planning" }, { content: "Build", status: "pending", activeForm: "Building" }] } }], 1) +
+    asst("a2", [{ type: "tool_use", id: "w2", name: "TodoWrite", input: { todos: [{ content: "Plan", status: "completed", activeForm: "Planning" }, { content: "Build", status: "in_progress", activeForm: "Building" }, { content: "Test", status: "pending", activeForm: "Testing" }] } }], 2));
+  const t = new Transcript(p); t.update();
+  expect(t.tasks.map((x) => `${x.text}:${x.status}`)).toEqual(["Plan:done", "Build:in_progress", "Test:pending"]);
+  expect(t.tasks[1].active).toBe("Building");
+});
+
+test("task list: TaskCreate takes the id from the result, TaskUpdate edits and deletes", () => {
+  const p = file(
+    asst("a1", [{ type: "tool_use", id: "c1", name: "TaskCreate", input: { subject: "Write tests", activeForm: "Writing tests" } }, { type: "tool_use", id: "c2", name: "TaskCreate", input: { subject: "Ship" } }], 1) +
+    user("r1", [{ type: "tool_result", tool_use_id: "c1", content: "Task #4 created successfully: Write tests" }, { type: "tool_result", tool_use_id: "c2", content: "Task #5 created successfully: Ship" }], 2) +
+    asst("a2", [{ type: "tool_use", id: "u1", name: "TaskUpdate", input: { taskId: "4", status: "in_progress" } }, { type: "tool_use", id: "u2", name: "TaskUpdate", input: { taskId: "5", status: "deleted" } }], 3));
+  const t = new Transcript(p); t.update();
+  expect(t.tasks).toEqual([{ id: "4", text: "Write tests", active: "Writing tests", status: "in_progress" }]);
 });

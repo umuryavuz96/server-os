@@ -33,21 +33,31 @@ otlp:                      # optional: also ship logs to an OpenTelemetry collec
 
 integrations:              # optional links to things already running on the machine
   claudeOS: http://127.0.0.1:3090/api      # optional external bot manager; without it Server OS runs bots itself
-  homeAssistant: { url: "http://192.168.1.10:8123", tokenEnv: HA_TOKEN }
+  homeAssistant: { url: "http://192.168.1.10:8123", tokenEnv: HA_TOKEN }   # allowDomains: [light, switch, ...] to change what dashboard cards may control
   adguard: { url: "http://127.0.0.1:3080", userEnv: ADGUARD_USER, passwordEnv: ADGUARD_PASSWORD }
   unbound: true                            # read unbound-control stats
   telegramBots: true                       # Claude Code Telegram channels in ~/.claude/channels
   cron:                                    # off unless set: list the user crontab as the Jobs tab
     history: ~/scripts/logs/notify_cron_history.jsonl   # optional: notify-bot JSONL → last-run status + Alerts
-    cards: ~/scripts/crontabs/jobs.json                 # optional: job ID cards (category, about, project)
+    cards: ~/scripts/crontabs/jobs.json                 # optional: job ID cards, see "Job ID cards" below
     logs: ~/scripts/logs                                # optional: per-job <name>.log files
     launchd: com.me.                                    # optional: also list your launchd agents with this label prefix (~/Library/LaunchAgents)
   channelsDir: ~/.claude/channels          # channel folders (launch.command, bot.pid); default for telegramBots, launch flags for claudeOS bots
-  houseVoice:                              # off unless set: desk speaker (wake-word listener) card in Bots
+  house: false                             # feature flag: the 3D House tab. Off unless true (needs homeAssistant); your own plan is saved in config/house.json
+  houseVoice:                              # off unless set: the Voice page (chat + desk speaker), see docs/voice-chat.md
     dir: ~/projects/house-voice            # listener project: listen.py, config.json, status.json, .venv
     session: house-voice                   # its tmux session (default house-voice)
     voiceLaunch: ~/.claude/channels/voice/launch.command   # starts the bot's voice session (app voice screen + desk speaker)
     voiceSession: bot-voice                # tmux session for it (default bot-voice)
+    # channel: voice                       # the voice bot's channel (default voice)
+    # name: Ada                            # the assistant's name in the chat (default: first heading of its CLAUDE.md)
+  stt:                                     # optional: speech to text for the voice chat (these are the defaults)
+    # whisper: /opt/homebrew/bin/whisper-cli
+    # model: ~/.whisper-models/ggml-small.bin   # else ggml-base.bin, ggml-base.en.bin, any ggml-*.bin there
+    # ffmpeg: /opt/homebrew/bin/ffmpeg
+  speakers:                                # optional: answer on a Home Assistant speaker (e.g. Sonos), output only
+    baseUrl: http://192.168.1.10           # this panel as the speaker can reach it on the LAN (it fetches the reply clip)
+    entities: [media_player.living_room]   # default: Home Assistant players named "Sonos…"
   elevenLabs: { keyEnv: ELEVENLABS_API_KEY }   # optional: ~/.env variable with an ElevenLabs key (usage card needs "User: read")
   screen:                                  # off unless enabled: System → Mac screen / Server screen (macOS Screen Sharing, or a VNC server on Linux, in the browser)
     enabled: true                          # see docs/permissions.md, "Remote screen"
@@ -59,12 +69,24 @@ integrations:              # optional links to things already running on the mac
   webhooks:                                # existing webhook listeners to watch
     - { slug: deploy, label: Deploy, description: "push → build", service: com.example.deploy, port: 9000, log: /tmp/deploy.log }
 
+costs:                     # optional: the Usage and Costs tabs (they work without it)
+  currency: EUR            # what totals are shown in (default USD)
+  usdRate: 0.86            # how many of that currency one USD is worth: list prices in the provider registry are USD (default 1)
+  kwhPrice: 0.30           # electricity per kWh in that currency (default 0.30)
+  envFile: ~/.env          # file whose variable NAMES are matched against the provider registry (default ~/.env)
+  power:                   # this machine's draw; built-in table: server/modules/machinePower.json
+    # idleW: 4             # watts at idle (default from the table, matched on the machine model)
+    # maxW: 40             # watts under full CPU load
+    # haEntity: sensor.server_plug_power   # a Home Assistant power sensor (W or kW, needs integrations.homeAssistant) replaces the estimate
+  # modelPrices: ~/server-os/config/model-prices.json   # { "models": [{ "match": "opus", "in": 5, "out": 25 }] } $/MTok, checked before the built-in table
+
 bots:                      # optional: the Bots tab
   provider: native         # native (default without integrations.claudeOS) | claudeOS (default with it) | both
   prefix: sos-             # tmux session prefix for native bots
   team: server-os          # agmsg team every native bot joins (agent name = bot name)
   # agmsg: { dir: ~/.agents/skills/agmsg, storage: ~/agmsg-store }   # another agmsg install / message store
   # telegram: { ownerChatIds: [123456789] }                          # pre-approved in every bot's access.json
+  # approvalPing: [python3, ~/scripts/lib/tg_rich.py, --bot, notify, --text]   # run (message appended) when a bot waits on a permission ask
 ```
 
 Secrets never go in this file. `tokenEnv`, `userEnv` and `passwordEnv` name variables in `~/.env`.
@@ -105,6 +127,10 @@ existing Telegram plugin state folder with its `access.json` and inbox, used ins
 needs `tokenEnv`). The bot still runs in `<prefix><name>`.
 
 Claude Code's Monitor tool ends a monitor after 30 minutes, and agmsg's inbox stream (`watch.sh`) is one. Every 30 seconds Server OS reads each running bot's transcript for that expiry (no model call). If the stream expired, nothing newer is running and the bot has been idle for a while, it types one short turn asking the bot to start the stream again.
+
+### Answering permission asks from the panel
+
+A bot that asks before using a tool (permission mode `default`/`acceptEdits`, or a tool its rules don't allow) normally waits in its terminal. Add `agent/hooks/permission-relay.sh` as a `PermissionRequest` command hook in the bot's Claude Code settings (`timeout` a little above the wait, for example 620) and the ask also appears on the Bots tab as a "Needs your OK" card: Allow, Always allow (applies Claude Code's first suggested rule) or Deny. The hook posts to `POST /api/v1/approvals/hook` on 127.0.0.1 (set `SERVER_OS_URL` if the panel listens elsewhere) and waits `SD_APPROVAL_WAIT` seconds (default 600). When nobody answers, the server can't be reached, or the session isn't a running bot of this panel, the hook prints nothing and exits 0, so Claude Code asks in the terminal as usual; answering in the terminal first cancels the card. The bot is found by its session id, then its folder, then `TELEGRAM_STATE_DIR`. Asks live in memory only.
 
 ### Bot workspaces
 
@@ -158,3 +184,45 @@ OS; team files stay in the agmsg folder, so a fully separate setup is a separate
 - **Audit log:** `logs/audit.jsonl` records `actor`, `action`, `target` and `result` for every change, whether it came from a device, the web panel, the agent or a webhook.
 - **Trace ids:** send a W3C `traceparent` header to join your own trace; every response returns one.
 - **In the panel:** the Logs page groups errors and opens any trace as a timeline (`GET /api/v1/traces/{id}`).
+
+## Job ID cards
+
+Every job (crontab, launchd agent, built-in) is expected to have a full card. `integrations.cron.cards` points at a JSON file: crontab jobs are keyed by job name, launchd agents by label. Keys starting with `_` are notes.
+
+```json
+"disk-clean": {
+  "category": "Maintenance", "reports": "Notify bot, weekly summary", "project": "~/scripts/disk-clean",
+  "about": "Two plain sentences: what it does and why.",
+  "touches": { "apps": ["Docker"], "paths": ["~/Library/Caches (cleared, 1-5 GB)"], "data": "Deletes regenerable caches older than 7 days" },
+  "uses": { "tools": ["python3", "docker"], "apis": [], "secrets": ["ADGUARD_PASSWORD"], "model": "" },
+  "risk": "destructive"
+}
+```
+
+`risk` is `read-only`, `writes` or `destructive` (deletes, overwrites or restarts something). Secrets are variable names, never values; anything that is not a name is dropped. Built-in jobs carry the same `about`, `touches`, `uses` and `risk` fields in `job.yaml`, and creating one without them is rejected. A card is complete with `about`, something under `touches`, `uses.tools` or `uses.apis`, and `risk`. `bun run server/cli.ts jobs:check` lists the jobs whose card is incomplete and exits 1.
+
+The panel shows an icon for each app, tool and API: the matching app from the Apps tab (by name or `.home` address), a brand logo (selfh.st icons through jsDelivr), or a generic icon. When an entry is not matched, add an optional `icons` map from the entry as written to an app name, a selfh.st logo name or `lucide:<icon>`: `"icons": { "My gadget": "Car Finder", "rclone": "lucide:cloud" }`.
+
+## Usage and Costs
+
+**Usage** lists the paid and metered services found on this device, one card each: plan, usage bars with reset time, monthly cost, status and a billing link. Nothing is configured; a service appears when one of its rules matches, and a fresh install with nothing found shows an empty state.
+
+- Variable names in `costs.envFile` (default `~/.env`) are matched against `server/modules/usageProviders.json`. Only names are read for discovery. A value is read inside the server only to call that provider's own usage or billing endpoint, and is never stored, logged or sent to the panel.
+- Signed-in command line tools (`gh auth status`, `tailscale status`), installed apps (Docker Desktop, Cursor) and profiles (Claude Code's `~/.claude.json`) are detected too.
+- Usage is read where an official API exists: Claude Code subscription windows, ElevenLabs characters (key needs "User: read"), Cloudflare plan per zone (token with Zone: read), GitHub plan and Actions minutes, and month-to-date spend for OpenAI and Anthropic when an admin key is present (`OPENAI_ADMIN_KEY`, an `sk-ant-admin…` key). Everything else shows as discovered with "Set price" and a billing link. Reads are cached for 10 minutes (5 after an error), time out after 8 s and back off after a 429; a failing service only fails its own card.
+- **Your numbers win.** Tap a card to set what you pay per month, a plan name, the renewal day or to hide it. They are stored in `config/usage.json` (`{ "services": { "elevenlabs": { "monthly": 22, "plan": "Creator", "renewalDay": 12 } }, "fixed": [] }`). Changing them needs a paired device or the admin key.
+- Add a provider with one entry in `usageProviders.json`: `id`, `name`, `icon` (a selfh.st slug or `lucide:<name>`), `kind` (paid, free or local), `billing` link, and `detect` rules (`env` regexes, `bin` + `login`, `file`, `app`). `prices` (monthly USD by plan name) or `flat` give a list-price estimate.
+
+**Costs** adds up what it takes to run the server per month: subscriptions and paid services (from Usage), electricity, and fixed costs you add (domains, VPS, hardware). The headline splits what is counted (prices you set or a service reported, fixed costs, a measured power reading) from what is estimated (list prices, electricity from CPU load).
+
+- Electricity: `costs.power.haEntity` reads a Home Assistant power sensor; without it the draw is estimated from CPU load between the machine's idle and full-load watts (`machinePower.json`, matched on the machine model, overridable with `idleW` / `maxW`). A sample every minute builds a daily kWh history in `data/costs-power.json`.
+- AI use of the server: Claude Code transcripts (`~/.claude/projects/**/*.jsonl`) are summed per bot, project and the main session, over the last 30 days, and priced at API list prices from `server/modules/modelPrices.json` (override with `costs.modelPrices`). A subscription covers these sessions, so this is shown as "what it would cost at API prices" next to the total and never added to it. Read offsets are kept in `data/costs-ai.json`, so only new lines are read after the first scan.
+
+## Home Assistant cards
+
+With `integrations.homeAssistant` set (URL plus a long-lived token in the env variable `tokenEnv`, default `HA_TOKEN`), dashboards get eight more card types: `entity`, `toggle`, `climate`, `camera`, `media`, `history`, `button` and `group`. Each holds the entity in `query.entity` (`query.entities` for a group; `history` also takes `range` and `points`). In the card editor, pick the entity from a searchable list. `docs/examples/house-dashboard.json` is a complete example (Dashboards, Import).
+
+- **Live state.** The server keeps one WebSocket to Home Assistant and pushes changes of the entities your dashboards show (the `haEntities` slice). If the socket can't be opened it polls `/api/states` every 5 s and retries the socket. The token never reaches the browser; camera stills and history are fetched by the server.
+- **What cards may control.** Service calls go through `POST /ha/call` and only for `integrations.homeAssistant.allowDomains`, default `[light, switch, fan, climate, media_player, scene, script, input_boolean, cover]`. Locks, alarm panels, buttons and everything else are read-only unless you list them. A call must name its entities (`entity_id`), each in the same allowed domain as the service; `area_id`, `device_id`, `"all"` and `reload` are refused. Calls are written to the audit log.
+- **Trying it safely.** `POST /ha/call?dry=1`, or starting the server with `HA_DRY_RUN=1`, checks a call and returns what it would send without sending it.
+- **History** is bucketed by the server into fixed steps; a state holds until it changes, and the chart has a gap before the first state it knows. Home Assistant's recorder decides how far back it goes (10 days by default).

@@ -1,0 +1,403 @@
+{
+  "version": 1,
+  "name": "Sample house",
+  "mirror": false,
+  "width": 6.0,
+  "storeyHeight": 2.6,
+  "wall": {
+    "outer": 0.3,
+    "inner": 0.1,
+    "height": 1.1
+  },
+  "floors": [
+    {
+      "id": "ground",
+      "name": "Ground floor",
+      "level": 0,
+      "depth": 8.0,
+      "rooms": [
+        {
+          "id": "kitchen",
+          "name": "Kitchen",
+          "kind": "kitchen",
+          "rects": [
+            {
+              "x": 0,
+              "y": 0,
+              "w": 3.5,
+              "d": 3
+            }
+          ],
+          "haArea": [
+            "kitchen"
+          ],
+          "floor": "oak_light"
+        },
+        {
+          "id": "hall",
+          "name": "Hall",
+          "kind": "hall",
+          "rects": [
+            {
+              "x": 3.5,
+              "y": 0,
+              "w": 2.5,
+              "d": 3
+            }
+          ],
+          "haArea": [
+            "hall"
+          ]
+        },
+        {
+          "id": "living",
+          "name": "Living room",
+          "kind": "living",
+          "rects": [
+            {
+              "x": 0,
+              "y": 3,
+              "w": 6,
+              "d": 5
+            }
+          ],
+          "haArea": [
+            "living_room"
+          ]
+        }
+      ],
+      "openTo": [
+        [
+          "kitchen",
+          "living"
+        ]
+      ],
+      "openings": [
+        {
+          "at": [
+            4.0,
+            0
+          ],
+          "along": "x",
+          "w": 0.9,
+          "kind": "door"
+        },
+        {
+          "at": [
+            1.75,
+            0
+          ],
+          "along": "x",
+          "w": 1.6,
+          "kind": "window",
+          "sill": 1.0,
+          "head": 2.2
+        },
+        {
+          "at": [
+            3.5,
+            1.5
+          ],
+          "along": "y",
+          "w": 0.8,
+          "kind": "door"
+        },
+        {
+          "at": [
+            4.75,
+            3
+          ],
+          "along": "x",
+          "w": 0.9,
+          "kind": "door"
+        },
+        {
+          "at": [
+            3.0,
+            8.0
+          ],
+          "along": "x",
+          "w": 3.0,
+          "kind": "window",
+          "sill": 0.1,
+          "head": 2.3
+        }
+      ],
+      "furniture": [
+        {
+          "type": "stairs",
+          "x": 4.75,
+          "y": 1.9,
+          "w": 0.94,
+          "d": 1.8
+        },
+        {
+          "type": "counter",
+          "x": 1.75,
+          "y": 0.31,
+          "w": 2.6,
+          "d": 0.62
+        },
+        {
+          "type": "fridge",
+          "x": 0.33,
+          "y": 1.2,
+          "w": 0.66,
+          "d": 0.66,
+          "rot": -90
+        },
+        {
+          "type": "dining-table",
+          "x": 1.5,
+          "y": 4.3,
+          "w": 0.95,
+          "d": 2.0
+        },
+        {
+          "type": "sofa-u",
+          "x": 3.2,
+          "y": 6.6,
+          "w": 3.0,
+          "d": 2.2
+        },
+        {
+          "type": "tv-unit",
+          "x": 5.6,
+          "y": 6.6,
+          "w": 2.4,
+          "d": 0.42,
+          "rot": 90
+        }
+      ]
+    },
+    {
+      "id": "first",
+      "name": "First floor",
+      "level": 1,
+      "depth": 8.0,
+      "rooms": [
+        {
+          "id": "bedroom-1",
+          "name": "Bedroom 1",
+          "kind": "bedroom",
+          "rects": [
+            {
+              "x": 0,
+              "y": 0,
+              "w": 3.5,
+              "d": 4
+            }
+          ],
+          "haArea": [
+            "bedroom"
+          ],
+          "floor": "laminate_grey"
+        },
+        {
+          "id": "landing",
+          "name": "Landing",
+          "kind": "hall",
+          "rects": [
+            {
+              "x": 3.5,
+              "y": 0,
+              "w": 2.5,
+              "d": 3
+            }
+          ]
+        },
+        {
+          "id": "bathroom",
+          "name": "Bathroom",
+          "kind": "bath",
+          "rects": [
+            {
+              "x": 3.5,
+              "y": 3,
+              "w": 2.5,
+              "d": 2.5
+            }
+          ],
+          "haArea": [
+            "bathroom"
+          ],
+          "floor": "tiles"
+        },
+        {
+          "id": "bedroom-2",
+          "name": "Bedroom 2",
+          "kind": "bedroom",
+          "rects": [
+            {
+              "x": 0,
+              "y": 4,
+              "w": 3.5,
+              "d": 4
+            }
+          ],
+          "haArea": [
+            "bedroom_2"
+          ],
+          "floor": "laminate_grey"
+        },
+        {
+          "id": "study",
+          "name": "Study",
+          "kind": "office",
+          "rects": [
+            {
+              "x": 3.5,
+              "y": 5.5,
+              "w": 2.5,
+              "d": 2.5
+            }
+          ],
+          "haArea": [
+            "office"
+          ]
+        }
+      ],
+      "voids": [
+        {
+          "x": 4.28,
+          "y": 1.0,
+          "w": 0.94,
+          "d": 1.8
+        }
+      ],
+      "openings": [
+        {
+          "at": [
+            3.5,
+            1.5
+          ],
+          "along": "y",
+          "w": 0.8,
+          "kind": "door"
+        },
+        {
+          "at": [
+            4.75,
+            3
+          ],
+          "along": "x",
+          "w": 0.8,
+          "kind": "door"
+        },
+        {
+          "at": [
+            3.5,
+            6.75
+          ],
+          "along": "y",
+          "w": 0.8,
+          "kind": "door"
+        },
+        {
+          "at": [
+            3.5,
+            4.5
+          ],
+          "along": "y",
+          "w": 0.8,
+          "kind": "door"
+        },
+        {
+          "at": [
+            1.75,
+            0
+          ],
+          "along": "x",
+          "w": 1.6,
+          "kind": "window",
+          "sill": 1.0,
+          "head": 2.2
+        },
+        {
+          "at": [
+            1.75,
+            8.0
+          ],
+          "along": "x",
+          "w": 1.6,
+          "kind": "window",
+          "sill": 1.0,
+          "head": 2.2
+        }
+      ],
+      "furniture": [
+        {
+          "type": "bed-box",
+          "x": 1.1,
+          "y": 1.6,
+          "w": 1.6,
+          "d": 2.1,
+          "rot": -90
+        },
+        {
+          "type": "wardrobe-sliding",
+          "x": 1.6,
+          "y": 3.7,
+          "w": 2.0
+        },
+        {
+          "type": "bed-day",
+          "x": 1.1,
+          "y": 6.0,
+          "w": 1.0,
+          "d": 2.0
+        },
+        {
+          "type": "desk-work",
+          "x": 5.0,
+          "y": 7.6,
+          "w": 1.6,
+          "d": 0.7,
+          "rot": 180
+        },
+        {
+          "type": "shower-black",
+          "x": 5.3,
+          "y": 3.9,
+          "w": 1.0,
+          "d": 0.9
+        }
+      ]
+    }
+  ],
+  "ignore": [
+    "sensor.backup_*",
+    "*_wifi_signal",
+    "*_filter_*"
+  ],
+  "pins": {
+    "light.living_main": {
+      "floor": "ground",
+      "x": 3.0,
+      "y": 5.5
+    },
+    "sensor.bedroom_temperature": {
+      "floor": "first",
+      "x": 1.5,
+      "y": 1.5
+    },
+    "light.study_desk_lamp": {
+      "floor": "first",
+      "x": 5.0,
+      "y": 7.2
+    },
+    "light.tv_unit_lights": {
+      "floor": "ground",
+      "x": 5.5,
+      "y": 6.6,
+      "z": 0.7,
+      "name": "TV unit lights",
+      "entities": [
+        "switch.tv_plug_socket_1",
+        "switch.tv_plug_socket_2",
+        "switch.tv_plug_socket_3",
+        "switch.tv_plug_socket_4"
+      ]
+    }
+  }
+}

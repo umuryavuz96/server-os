@@ -4,6 +4,8 @@
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { api, toast } from "../store";
 import DashCard, { type Card } from "../dash/DashCard.vue";
+import HaPicker from "../dash/HaPicker.vue";
+import { HA_LABELS, HA_TYPES } from "../dash/ha";
 
 interface Dash { id?: string; title: string; description?: string; refresh?: number; cards: Card[] }
 const list = ref<{ id: string; title: string; cards: number }[]>([]);
@@ -65,8 +67,10 @@ function settle(fixedId?: string) {
 }
 
 // ---- edit a card ----
-const TYPES: [string, string][] = [["metric", "Chart"], ["stat", "Number"], ["gauge", "Gauge"], ["bar", "Bar chart"], ["apps", "Apps"], ["jobs", "Jobs"], ["bots", "Bots"], ["claude", "Claude"], ["logs", "Logs"], ["text", "Text"]];
-const DESIGNS: Record<string, string[]> = { metric: ["hero", "line", "area"], stat: ["tile", "big"], gauge: ["ring", "bar"], apps: ["list", "grid"], jobs: ["list"], bots: ["list"], claude: ["usage", "jobs"], logs: ["stream"], text: ["plain"], bar: ["default"] };
+const TYPES: [string, string][] = [["metric", "Chart"], ["stat", "Number"], ["gauge", "Gauge"], ["bar", "Bar chart"], ["apps", "Apps"], ["jobs", "Jobs"], ["bots", "Bots"], ["claude", "Claude"], ["logs", "Logs"], ["text", "Text"], ...HA_LABELS];
+const DESIGNS: Record<string, string[]> = { metric: ["hero", "line", "area"], stat: ["tile", "big"], gauge: ["ring", "bar"], apps: ["list", "grid"], jobs: ["list"], bots: ["list"], claude: ["usage", "jobs"], logs: ["stream"], text: ["plain"], bar: ["default"], entity: ["tile", "big"], toggle: ["tile", "row"], climate: ["default"], camera: ["default"], media: ["default"], history: ["default"], button: ["default"], group: ["default"] };
+// Which Home Assistant domains suit each card type (the picker still lets you widen it).
+const HA_DOMAINS: Record<string, string[]> = { toggle: ["light", "switch", "fan", "input_boolean", "cover"], climate: ["climate"], camera: ["camera"], media: ["media_player"], button: ["scene", "script"] };
 const METRICS = ["ram", "cpu", "disk", "swap", "load", "net"], RANGES = ["1h", "2h", "6h", "24h", "7d", "30d", "90d"];
 const sel = ref<Card | null>(null);
 function addCard() {
@@ -77,9 +81,16 @@ function addCard() {
 function removeCard(c: Card) { dash.value!.cards = dash.value!.cards.filter((x) => x !== c); sel.value = null; settle(); }
 function setType(c: Card, t: string) {
   c.type = t; c.design = DESIGNS[t][0];
+  if (HA_TYPES.includes(t)) { // keep the entity when switching between Home Assistant cards
+    const was = c.query?.entity ?? c.query?.entities?.[0];
+    c.query = t === "group" ? { entities: c.query?.entities ?? (was ? [was] : []) } : t === "history" ? { entity: was, range: "24h" } : { entity: was };
+    if (!was) c.title = c.title === "New card" ? "" : c.title;
+    return;
+  }
   c.query = t === "metric" ? { metric: "ram", range: "24h" } : t === "bar" ? { metric: "ram", range: "7d", points: 28 } : t === "stat" || t === "gauge" ? { metric: "ram" } : t === "logs" ? { filter: "warn", limit: 20 } : ["apps", "jobs", "bots", "claude"].includes(t) ? { limit: 6 } : undefined;
   if (t === "text") c.text = c.text ?? "## Notes\n\nWrite **Markdown** here.";
 }
+const onPick = (c: Card, e: { name: string }) => { if (!c.title || c.title === "New card") c.title = e.name; };
 const qset = (c: Card, k: string, v: unknown) => { c.query = { ...(c.query ?? {}) }; if (v === "" || v == null || Number.isNaN(v)) delete c.query[k]; else c.query[k] = v; };
 
 async function save() {
@@ -178,6 +189,16 @@ async function importFile(e: Event) {
                 <div class="fld-row">
                   <label class="fld">Warn at<input type="number" :value="sel.query?.warn ?? ''" @change="qset(sel, 'warn', ($event.target as HTMLInputElement).value === '' ? '' : Number(($event.target as HTMLInputElement).value))" /></label>
                   <label class="fld">Bad at<input type="number" :value="sel.query?.bad ?? ''" @change="qset(sel, 'bad', ($event.target as HTMLInputElement).value === '' ? '' : Number(($event.target as HTMLInputElement).value))" /></label>
+                </div>
+              </template>
+              <template v-if="HA_TYPES.includes(sel.type)">
+                <div class="fld">{{ sel.type === "group" ? "Entities in the group" : "Entity" }}
+                  <HaPicker v-if="sel.type === 'group'" :key="sel.id + 'g'" :model-value="sel.query?.entities" multi @update:model-value="qset(sel, 'entities', $event)" />
+                  <HaPicker v-else :key="sel.id + sel.type" :model-value="sel.query?.entity" :domains="HA_DOMAINS[sel.type]" @update:model-value="qset(sel, 'entity', $event)" @pick="onPick(sel, $event)" />
+                </div>
+                <div v-if="sel.type === 'history'" class="fld-row">
+                  <label class="fld">Range<select :value="sel.query?.range ?? '24h'" @change="qset(sel, 'range', ($event.target as HTMLSelectElement).value)"><option v-for="r in ['1h', '2h', '6h', '24h', '7d', '30d']" :key="r">{{ r }}</option></select></label>
+                  <label class="fld">Points<input type="number" min="10" max="400" :value="sel.query?.points ?? 120" @change="qset(sel, 'points', Number(($event.target as HTMLInputElement).value))" /></label>
                 </div>
               </template>
               <template v-if="['apps', 'jobs', 'bots', 'logs', 'claude'].includes(sel.type)">

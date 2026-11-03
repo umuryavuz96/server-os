@@ -19,10 +19,17 @@ export interface ClaudeUsage {
   plan: string | null;
   session: { pct: number; resetsAt: number | null } | null;
   week: { pct: number; resetsAt: number | null } | null;
+  /** Every limit window the API returned, in display order (5-hour, week, then per-model and any new ones). session and
+   *  week stay for older clients (iOS app, widget); new clients draw this list. Absent in states saved before 2026-10-31. */
+  windows?: UsageWindow[];
+  /** The response carries five_hour: null next to a weekly window: the plan has no 5-hour limit (Ultra, 2026-10-30). */
+  noSessionLimit?: boolean;
   fetchedAt: number;
   /** Set when the last read failed; session/week then hold the last good numbers (from fetchedAt). */
   error: string | null;
 }
+
+export interface UsageWindow { key: string; label: string; pct: number; resetsAt: number | null; hours: number | null }
 
 export interface ClaudeJob {
   pid: number;
@@ -51,8 +58,11 @@ async function token(): Promise<{ accessToken: string; plan: string | null } | n
   if (!raw) return null;
   try {
     const o = JSON.parse(raw).claudeAiOauth ?? {};
-    const tier = String(o.rateLimitTier ?? "");
-    const plan = o.subscriptionType ? `${String(o.subscriptionType).replace(/^./, (c: string) => c.toUpperCase())}${/(\d+x)/.exec(tier)?.[1] ? " " + /(\d+x)/.exec(tier)![1] : ""}` : null;
+    // the Keychain tier is frozen at login (a plan upgrade never rewrites it); ~/.claude.json's profile is refetched by Claude Code
+    let prof: { organizationRateLimitTier?: string } = {};
+    try { prof = JSON.parse(readFileSync(join(HOME, ".claude.json"), "utf8")).oauthAccount ?? {}; } catch { /* no profile */ }
+    const tier = String(prof.organizationRateLimitTier ?? o.rateLimitTier ?? "");
+    const plan = planName(o.subscriptionType, tier);
     return o.accessToken ? { accessToken: o.accessToken, plan } : null;
   } catch { return null; }
 }
@@ -79,11 +89,67 @@ export function loadUsageState(file = stateFile()): UsageState {
     if (!existsSync(file)) return { last: null, retryAt: 0, strikes: 0 };
     const o = JSON.parse(readFileSync(file, "utf8"));
     const l = o.last;
-    const ok = l && typeof l.fetchedAt === "number" && (l.session || l.week);
-    return { last: ok ? { ...l, error: null } : null, retryAt: Number(o.retryAt) || 0, strikes: Number(o.strikes) || 0 };
+    const ok = l && typeof l.fetchedAt === "number" && (l.session || l.week || l.windows?.length);
+    // a state saved before the Ultra rename still says "Max 20x"
+    return { last: ok ? { ...l, plan: l.plan === "Max 20x" ? "Ultra" : l.plan === "Max 5x" ? "Max" : l.plan, error: null } : null, retryAt: Number(o.retryAt) || 0, strikes: Number(o.strikes) || 0 };
   } catch { return { last: null, retryAt: 0, strikes: 0 }; }
 }
 
+const num = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+
+/** One usage window ({ utilization, resets_at }) → { pct, resetsAt }; utilization may come as a number or a numeric string. */
+export function readWindow(w: unknown): { pct: number; resetsAt: number | null } | null {
+  if (!w || typeof w !== "object" || Array.isArray(w)) return null;
+  const o = w as Record<string, unknown>;
+  if (o.is_enabled === false || o.enabled === false) return null; // e.g. extra_usage while extra usage is switched off
+  const pct = num(o.utilization);
+  return pct == null ? null : { pct, resetsAt: typeof o.resets_at === "string" ? toEpoch(o.resets_at) : num(o.resets_at) };
+}
+
+// Labels for the windows we know; anything new gets a readable name from its key ("seven_day_haiku" → "Week · Haiku").
+const WINDOW_LABEL: Record<string, string> = {
+  five_hour: "Session · 5 h", seven_day: "Week", seven_day_opus: "Week · Opus", seven_day_sonnet: "Week · Sonnet", seven_day_oauth_apps: "Week · apps",
+};
+const ORDER = ["five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet"];
+const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+export function windowLabel(key: string): string {
+  if (WINDOW_LABEL[key]) return WINDOW_LABEL[key];
+  const m = /^(five_hour|seven_day)_(.+)$/.exec(key);
+  if (m) return `${WINDOW_LABEL[m[1]]} · ${m[2].split("_").map(cap).join(" ")}`;
+  return cap(key.replace(/_/g, " "));
+}
+/** How long the window is, for the "time left" bar: five_hour → 5, seven_day* → 168, unknown → null. */
+const windowHours = (key: string) => (key.startsWith("five_hour") ? 5 : key.startsWith("seven_day") ? 168 : null);
+
+/** The OAuth usage response → ClaudeUsage: every key whose value is a window with a utilization, nothing hard-coded.
+ *  A null window is not drawn; five_hour: null beside a weekly window means the plan has no 5-hour limit. */
+export function parseUsage(j: Record<string, unknown>, plan: string | null, now: number): ClaudeUsage {
+  const windows: UsageWindow[] = [];
+  for (const [key, v] of Object.entries(j)) {
+    const w = readWindow(v);
+    if (w) windows.push({ key, label: windowLabel(key), hours: windowHours(key), ...w });
+  }
+  const rank = (k: string) => (ORDER.includes(k) ? ORDER.indexOf(k) : ORDER.length);
+  windows.sort((a, b) => rank(a.key) - rank(b.key) || a.key.localeCompare(b.key));
+  const pick = (k: string) => { const w = windows.find((x) => x.key === k); return w ? { pct: w.pct, resetsAt: w.resetsAt } : null; };
+  const week = pick("seven_day");
+  return { plan, session: pick("five_hour"), week, windows, noSessionLimit: j.five_hour === null && !!week, fetchedAt: now, error: null };
+}
+
+/** Plan name for the card. The Keychain/profile still say "max" + a 20x tier; Anthropic renamed Max 20x to Ultra
+ *  (2026-10-30) and Max 5x is plain Max. A plan name the profile already spells differently passes through. */
+export function planName(subscription: string | null | undefined, tier: string | null | undefined): string | null {
+  if (!subscription) return null;
+  const sub = String(subscription).toLowerCase(), x = /(\d+)x/.exec(String(tier ?? ""))?.[1];
+  if (sub === "max") return x === "20" ? "Ultra" : "Max";
+  return cap(String(subscription)) + (x ? ` ${x}x` : "");
+}
+
+const shapeOf = (v: unknown): string => v === null ? "null" : Array.isArray(v) ? "array" : typeof v === "object"
+  ? `{${Object.entries(v as object).map(([k, x]) => `${k}:${x === null ? "null" : typeof x}`).join(",")}}` : typeof v;
+
+let lastShape = "";
 export async function readUsage(): Promise<ClaudeUsage> {
   const now = Math.floor(Date.now() / 1000);
   const t = await token();
@@ -99,10 +165,14 @@ export async function readUsage(): Promise<ClaudeUsage> {
       retryAt = Date.now() + backoffMs(strikes, Number(r.headers.get("retry-after")));
     }
     if (!r.ok) return { plan: t.plan, session: null, week: null, fetchedAt: now, error: `Usage API HTTP ${r.status}` };
-    const j = await r.json() as Record<string, { utilization?: number; resets_at?: string } | null>;
-    const win = (w: { utilization?: number; resets_at?: string } | null | undefined) =>
-      w && typeof w.utilization === "number" ? { pct: w.utilization, resetsAt: toEpoch(w.resets_at) } : null;
-    return { plan: t.plan, session: win(j.five_hour), week: win(j.seven_day), fetchedAt: now, error: null };
+    const j = await r.json() as Record<string, unknown>;
+    const u = parseUsage(j, t.plan, now);
+    // Only the shape (keys and value types, never values or the token), so a changed response can be diagnosed.
+    // The response's shape (keys and value types only, never values or the token), logged when it changes, so a new
+    // window or a renamed field can be seen in Logs.
+    const shape = Object.entries(j).map(([k, v]) => `${k}=${shapeOf(v)}`).join(" ");
+    if (shape !== lastShape) { lastShape = shape; logEvent("info", "Claude usage response shape", { module: "claude", shape }); }
+    return u;
   } catch (e) {
     return { plan: t.plan, session: null, week: null, fetchedAt: now, error: String(e).slice(0, 120) };
   }

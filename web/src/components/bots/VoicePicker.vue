@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The voice Lahmacun answers with. Every installed voice (live from the speech services, /voice/showcase): the one in
+// The voice the assistant answers with. Every installed voice (live from the speech services, /voice/showcase): the one in
 // use up top, then flag tabs by language and tiles grouped by engine, each tile with a play button that fetches a short
 // sample (made once on the server, then cached) and a tap that sets the desk speaker's voice (/house-voice).
 import { ref, computed, onMounted, onUnmounted } from "vue";
@@ -10,7 +10,7 @@ import Icon from "../Icon.vue";
 type Voice = { id: string; name: string; lang: string; language: string; accent?: string; engine: string; cloud: boolean; cost: string; sample: boolean; speed: { rtf: number; seconds: number } | null };
 type Lang = "tr" | "en" | "other";
 // cloudOn: the Cloud voices card's switch, so cloud tiles grey out the moment it moves.
-const props = defineProps<{ cloudOn?: boolean }>();
+const props = withDefaults(defineProps<{ cloudOn?: boolean; name?: string }>(), { name: "The assistant" });
 const d = ref<{ available: boolean; cloudEnabled: boolean; installed: Voice[] } | null>(null);
 const current = ref<string | null>(null), canUse = ref(false), filter = ref<Lang | null>(null), switching = ref<string | null>(null);
 const loading = ref<string | null>(null), playing = ref<string | null>(null);
@@ -54,7 +54,7 @@ async function play(v: Voice) {
 async function use(v: Voice) {
   if (!canUse.value || current.value === v.id || switching.value || off(v)) return;
   switching.value = v.id;
-  try { await api("/house-voice", { method: "PATCH", body: { voice: v.id } }); current.value = v.id; toast(`Lahmacun now speaks as ${v.name}`); } catch (e) { toast((e as Error).message); }
+  try { await api("/house-voice", { method: "PATCH", body: { voice: v.id } }); current.value = v.id; toast(`${props.name} now speaks as ${v.name}`); } catch (e) { toast((e as Error).message); }
   switching.value = null;
 }
 

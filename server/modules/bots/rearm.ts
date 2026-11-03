@@ -23,3 +23,24 @@ export function expiredWatcher(jobs: Iterable<BgJob>, s: { working: unknown; las
 
 export const rearmPrompt = (j: BgJob) =>
   `Your agmsg inbox stream expired (Monitor ends after 30 minutes). Start it again now: Monitor with command ${j.command}, description "${j.name}", timeout_ms 1800000. Then reply only: ready.`;
+
+/** Live `watch.sh <session> <cwd> <type> [name]` processes per project folder, from `ps -axo command=` output.
+ *  Key = the cwd in Claude Code's transcript-folder spelling (every non-alphanumeric char becomes "-"). */
+export function liveWatchers(psOut: string): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const line of psOut.split("\n")) {
+    const a = line.match(/\/watch\.sh\s+(\S+)\s+("[^"]+"|\S+)/);
+    if (!a || /\b(grep|bash -c|zsh -c)\b/.test(line.split("watch.sh")[0])) continue;
+    const key = a[2].replace(/"/g, "").replace(/[^A-Za-z0-9]/g, "-");
+    m.set(key, (m.get(key) ?? 0) + 1);
+  }
+  return m;
+}
+
+/** Monitors the transcript still calls running although no watch.sh process backs them (session restart or crash
+ *  leaves no stop marker): of the running watcher jobs only the newest `alive` stay, the rest end as "gone". */
+export function dropDeadWatchers(jobs: BgJob[], alive: number): BgJob[] {
+  const run = jobs.filter((j) => isWatcher(j) && !j.ended).sort((a, b) => b.started - a.started);
+  const dead = new Set(run.slice(alive).map((j) => j.id));
+  return jobs.map((j) => (dead.has(j.id) ? { ...j, ended: j.lastEventAt ?? j.started, endReason: "gone" } : j));
+}

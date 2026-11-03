@@ -22,17 +22,20 @@ security:
   - device: []
 tags:
   - { name: server, description: "Identity, capabilities and pairing" }
+  - { name: usage, description: "Usage and Costs tabs: paid services found on this device with their usage, and what the server costs per month" }
   - { name: update, description: "Self-update from signed GitHub releases, with a health-checked rollback" }
   - { name: live, description: Live state }
   - { name: metrics, description: "Metric history" }
   - { name: apps, description: "Installed apps: power, logs" }
   - { name: jobs, description: "Scheduled jobs and their notifications" }
   - { name: bots, description: "Claude Code bots: session feed and controls. Lifecycle runs natively (tmux sessions <prefix><bot>) or is proxied to Claude OS (integrations.claudeOS)" }
+  - { name: voice, description: "The voice assistant's chat (docs/voice-chat.md): speech to text, a phone as the microphone, speakers to answer on. The conversation itself is the voice bot's feed and send under bots." }
   - { name: storage, description: "Disk usage" }
   - { name: screen, description: "Remote screen: this Mac's Screen Sharing (VNC) over a WebSocket, for noVNC in the panel. Off unless integrations.screen.enabled." }
   - { name: permissions, description: "macOS privacy permissions (Full Disk Access, Local Network, …): what is needed, whether it is granted, how to fix it. macOS only." }
   - { name: discover, description: "Search and install self-hostable software" }
   - { name: dashboards, description: "JSON dashboards" }
+  - { name: homeassistant, description: "Home Assistant entity cards (the token never leaves the server)" }
   - { name: observability, description: "Logs, traces, audit" }
 
 paths:
@@ -121,7 +124,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [code], properties: { code: { type: string }, name: { type: string, examples: ["Umur's iPad"] }, platform: { type: string, examples: [ipados] } } }
+            schema: { type: object, required: [code], properties: { code: { type: string }, name: { type: string, examples: ["Alex's iPad"] }, platform: { type: string, examples: [ipados] } } }
       responses:
         "200":
           description: Paired
@@ -520,6 +523,35 @@ paths:
       responses:
         "200": { description: OK, content: { application/json: { schema: { type: object } } } }
         "403": { $ref: "#/components/responses/Problem" }
+  /apps/discovered:
+    get:
+      operationId: listDiscoveredApps
+      tags: [apps]
+      summary: What runs on this server but is not on the Apps tab (Caddy sites, containers, LaunchAgents)
+      responses:
+        "200":
+          description: Candidates, each with a suggested name and group
+          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { type: object, required: [id, kind, name, detail, group], properties: { id: { type: string, description: "site:<host>, docker:<name> or launchd:<label>" }, kind: { type: string, enum: [site, docker, launchd] }, name: { type: string }, href: { type: string }, about: { type: string }, detail: { type: string }, group: { type: string }, docker: { type: array, items: { type: string } }, launchd: { type: array, items: { type: string } } } } } } } } }
+  /apps/discovered/add:
+    post:
+      operationId: addDiscoveredApp
+      tags: [apps]
+      summary: Put a discovered item on the Apps tab (writes a catalog entry; catalog.json is backed up first)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string }, name: { type: string }, group: { type: string }, about: { type: string } } } } } }
+      responses:
+        "200": { description: Added, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, name: { type: string }, backup: { type: [string, "null"] } } } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /apps/discovered/ignore:
+    post:
+      operationId: ignoreDiscoveredApp
+      tags: [apps]
+      summary: Stop listing a discovered item
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string } } } } } }
+      responses:
+        "200": { description: Ignored, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "403": { $ref: "#/components/responses/Problem" }
   /apps/delete-plan:
     get:
       operationId: deletePlan
@@ -584,6 +616,133 @@ paths:
       responses:
         "200": { description: Names, content: { application/json: { schema: { type: array, items: { type: string } } } } }
         "403": { $ref: "#/components/responses/Problem" }
+  /voice/chat:
+    get:
+      operationId: voiceChatInfo
+      tags: [voice]
+      summary: What the voice chat can use here
+      description: "The assistant's name (integrations.houseVoice.name, else the first heading of its CLAUDE.md), its bot channel, the voice and language it answers in, whether speech to text, the desk speaker and speakers are set up, and the panel's https address for a phone's mic page."
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { type: object, required: [name, channel, available, stt], properties: {
+            name: { type: string }, channel: { type: string }, available: { type: boolean }, running: { type: boolean }, voice: { type: string }, language: { type: string, enum: [en, tr, auto] },
+            stt: { type: object, properties: { available: { type: boolean }, engine: { type: string }, model: { type: [string, "null"] }, englishOnly: { type: boolean }, reason: { type: [string, "null"] } } },
+            deskSpeaker: { type: object, properties: { available: { type: boolean }, enabled: { type: boolean }, state: { type: string } } },
+            speakers: { type: object, properties: { configured: { type: boolean } } }, phoneUrl: { type: [string, "null"] }, auth: { type: string } } } } }
+  /voice/transcribe:
+    post:
+      operationId: voiceTranscribe
+      tags: [voice]
+      summary: Speech to text for a recorded clip (whisper.cpp)
+      description: "The body is the recording as the browser made it (webm/opus, mp4/aac, ogg or wav, up to 12 MB); ffmpeg decodes it and whisper.cpp transcribes it. One at a time."
+      parameters: [{ name: lang, in: query, schema: { type: string, enum: [en, tr, auto], default: auto } }]
+      requestBody: { required: true, content: { audio/webm: { schema: { type: string, format: binary } }, audio/mp4: { schema: { type: string, format: binary } }, audio/wav: { schema: { type: string, format: binary } } } }
+      responses:
+        "200": { description: What was said, content: { application/json: { schema: { $ref: "#/components/schemas/Transcript" } } } }
+        "413": { $ref: "#/components/responses/Problem" }
+        "415": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /voice/mic:
+    get:
+      operationId: voiceMicList
+      tags: [voice]
+      summary: Mic sessions a chat is showing right now, newest first
+      description: "How an already-paired device (an app, a voice satellite) finds a chat to feed without scanning its code, e.g. the newest `label: TV`."
+      responses:
+        "200": { description: Sessions, content: { application/json: { schema: { type: object, properties: { sessions: { type: array, items: { type: object, properties: { id: { type: string }, label: { type: [string, "null"] }, state: { type: string }, device: { type: [string, "null"] }, created: { type: integer } } } } } } } } }
+    post:
+      operationId: voiceMicOpen
+      tags: [voice]
+      summary: Open a phone-as-microphone session for this chat
+      description: "Returns the link a phone opens (`<https panel>/#mic?s=<id>&code=<pairing code>`). With `auth: token` it also opens a normal one-time pairing code, so a phone that isn't signed in pairs itself; every mic call is authenticated. `label` names the screen (the TV kiosk sends `TV`)."
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { label: { type: string, maxLength: 40 } } } } } }
+      responses:
+        "200": { description: Session, content: { application/json: { schema: { type: object, required: [id, url, secure], properties: { id: { type: string }, url: { type: string }, secure: { type: boolean }, code: { type: [string, "null"] }, expires: { type: [integer, "null"] } } } } } }
+  /voice/mic/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: voiceMic
+      tags: [voice]
+      summary: A mic session's state (the phone page checks it), with the chat's answers after `after`
+      parameters: [{ name: after, in: query, schema: { type: integer, default: 0 }, description: "Only answers with a higher seq" }]
+      responses:
+        "200": { description: State, content: { application/json: { schema: { type: object, properties: { id: { type: string }, state: { type: string }, device: { type: [string, "null"] }, name: { type: string }, label: { type: [string, "null"] }, busy: { type: boolean, description: "An answer to the last transcript is on its way" }, seq: { type: integer }, replies: { type: array, items: { type: object, properties: { seq: { type: integer }, text: { type: string }, language: { type: [string, "null"] }, at: { type: integer } } } } } } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: voiceMicClose
+      tags: [voice]
+      summary: End a mic session
+      responses: { "204": { description: Ended }, "404": { $ref: "#/components/responses/Problem" } }
+  /voice/mic/{id}/events:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: voiceMicEvents
+      tags: [voice]
+      summary: What the phone does and says (SSE)
+      description: "Events `mic`: `{type: phone, state: waiting|connected|listening|recording|sending|gone, device}`, `{type: transcript, id, text, language}`, `{type: reply, seq, text, language}`, `{type: listen}` (the chat asks the mic to listen now) or `{type: error, detail}`."
+      responses:
+        "200": { description: Event stream, content: { text/event-stream: { schema: { type: string } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /voice/mic/{id}/state:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: voiceMicState
+      tags: [voice]
+      summary: The phone says what it is doing (also its heartbeat; silent for 45 s = gone)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [state], properties: { state: { type: string, enum: [connected, listening, recording, sending, gone] }, device: { type: string } } } } } }
+      responses: { "200": { description: OK }, "400": { $ref: "#/components/responses/Problem" }, "404": { $ref: "#/components/responses/Problem" } }
+  /voice/mic/{id}/clip:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { name: lang, in: query, schema: { type: string, enum: [en, tr, auto] } }]
+    post:
+      operationId: voiceMicClip
+      tags: [voice]
+      summary: A clip recorded on the phone; transcribed and handed to the chat as a transcript event
+      requestBody: { required: true, content: { audio/mp4: { schema: { type: string, format: binary } }, audio/webm: { schema: { type: string, format: binary } } } }
+      responses:
+        "200": { description: What was said, content: { application/json: { schema: { $ref: "#/components/schemas/Transcript" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /voice/mic/{id}/listen:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: voiceMicListen
+      tags: [voice]
+      summary: Ask the connected mic to listen now (one sentence); it gets a `listen` event
+      responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/Problem" }, "409": { $ref: "#/components/responses/Problem" } }
+  /voice/mic/{id}/reply:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: voiceMicReply
+      tags: [voice]
+      summary: The chat hands an answer back to the phone (shown and spoken there), or ends the turn (done)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { text: { type: string }, language: { type: string }, done: { type: boolean } } } } } }
+      responses: { "200": { description: OK }, "400": { $ref: "#/components/responses/Problem" }, "404": { $ref: "#/components/responses/Problem" } }
+  /voice/speakers:
+    get:
+      operationId: voiceSpeakers
+      tags: [voice]
+      summary: Speakers the chat can answer on (Home Assistant media players, e.g. Sonos; output only)
+      responses:
+        "200": { description: Speakers, content: { application/json: { schema: { type: object, properties: { configured: { type: boolean }, baseUrl: { type: boolean }, speakers: { type: array, items: { type: object, properties: { id: { type: string }, name: { type: string }, state: { type: string }, available: { type: boolean } } } } } } } } }
+        "502": { $ref: "#/components/responses/Problem" }
+  /voice/speakers/play:
+    post:
+      operationId: voiceSpeakerPlay
+      tags: [voice]
+      summary: Speak a text on a speaker
+      description: "Synthesizes the text (as /voice/speak), keeps it as a WAV clip for 10 minutes and asks Home Assistant to play `<integrations.speakers.baseUrl>/api/v1/voice/clips/<id>.wav` on the entity (media_player.play_media, announce)."
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [entity, text], properties: { entity: { type: string }, text: { type: string, maxLength: 8000 }, voice: { type: string } } } } } }
+      responses: { "200": { description: Playing }, "404": { $ref: "#/components/responses/Problem" }, "409": { $ref: "#/components/responses/Problem" }, "502": { $ref: "#/components/responses/Problem" } }
+  /voice/clips/{file}:
+    get:
+      operationId: voiceClip
+      tags: [voice]
+      summary: A reply clip for a speaker to fetch
+      description: Open (a speaker can't sign in); the id is 128 random bits and the clip expires after 10 minutes.
+      security: [{}]
+      parameters: [{ name: file, in: path, required: true, schema: { type: string, pattern: "^[0-9a-f]{32}\\.wav$" } }]
+      responses: { "200": { description: WAV, content: { audio/wav: { schema: { type: string, format: binary } } } }, "404": { $ref: "#/components/responses/Problem" } }
   /bots/{channel}/feed:
     get:
       operationId: botFeed
@@ -706,6 +865,30 @@ paths:
       summary: Forget a request
       parameters: [{ $ref: "#/components/parameters/Channel" }, { name: id, in: path, required: true, schema: { type: string } }]
       responses: { "204": { description: Gone }, "404": { $ref: "#/components/responses/Problem" } }
+  /approvals/hook:
+    post:
+      operationId: approvalsHook
+      tags: [bots]
+      summary: Permission relay for Claude Code's PermissionRequest hook (this machine only)
+      description: Holds the request open until the owner answers on the Bots tab. 200 carries the hook's decision JSON; 204 means no answer (or the asking session isn't a known running bot), so the hook prints nothing and Claude Code asks in the terminal. Refused (403) from anywhere but the server itself; needs no token.
+      parameters: [{ name: X-Wait, in: header, schema: { type: integer }, description: Seconds to wait }, { name: X-State-Dir, in: header, schema: { type: string }, description: The session's TELEGRAM_STATE_DIR, to identify the bot }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, description: The PermissionRequest hook input } } } }
+      responses: { "200": { description: Decision, content: { application/json: { schema: { type: object } } } }, "204": { description: No answer }, "403": { $ref: "#/components/responses/Problem" } }
+  /bots/{channel}/approvals:
+    get:
+      operationId: botApprovals
+      tags: [bots]
+      summary: Permission asks waiting for the owner's answer
+      parameters: [{ $ref: "#/components/parameters/Channel" }]
+      responses: { "200": { description: Pending asks, content: { application/json: { schema: { type: array, items: { type: object } } } } } }
+  /bots/{channel}/approvals/{id}/decide:
+    post:
+      operationId: botApprovalDecide
+      tags: [bots]
+      summary: Allow, always allow or deny a waiting permission ask
+      parameters: [{ $ref: "#/components/parameters/Channel" }, { name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [behavior], properties: { behavior: { type: string, enum: [allow, deny] }, always: { type: boolean, description: "allow only: also apply Claude Code's first suggested permission rule" }, message: { type: string, description: "deny only: why, told to Claude" } } } } } }
+      responses: { "200": { $ref: "#/components/responses/Legacy" }, "400": { $ref: "#/components/responses/Problem" }, "404": { $ref: "#/components/responses/Problem" } }
   /operations/{id}:
     get:
       operationId: getOperation
@@ -753,6 +936,117 @@ paths:
       responses:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Problem" }
+  /ha:
+    get:
+      operationId: haStatus
+      tags: [homeassistant]
+      summary: Bridge status (configured, online, live mode ws or poll) and the domains service calls may use
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+  /ha/entities:
+    get:
+      operationId: haEntities
+      tags: [homeassistant]
+      summary: Entities for a picker (id, name, domain, state, unit, icon, area), searchable
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: "matches name, id or area" }
+        - { name: domain, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 200, default: 60 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+  /ha/entities/{id}:
+    get:
+      operationId: haEntity
+      tags: [homeassistant]
+      summary: One entity; asking also subscribes the live stream (haEntities slice) to it
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /ha/call:
+    post:
+      operationId: haCall
+      tags: [homeassistant]
+      summary: Call a service on named entities. Only domains in integrations.homeAssistant.allowDomains; area, device and "all" targets are refused.
+      parameters: [{ name: dry, in: query, schema: { type: string, enum: ["1"] }, description: "check and report what would be sent, send nothing" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [domain, service], properties: { domain: { type: string }, service: { type: string }, data: { type: object, description: "service data; entity_id is required" } } } } } }
+      responses:
+        "200": { description: Done }
+        "403": { $ref: "#/components/responses/Problem" }
+        "502": { $ref: "#/components/responses/Problem" }
+  /ha/history/{id}:
+    get:
+      operationId: haHistory
+      tags: [homeassistant]
+      summary: A numeric entity's history as fixed-step buckets (a state holds until it changes; null before the first one)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: range, in: query, schema: { type: string, enum: ["1h", "2h", "6h", "24h", "7d", "30d"], default: "24h" } }
+        - { name: points, in: query, schema: { type: integer, minimum: 10, maximum: 400, default: 120 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "502": { $ref: "#/components/responses/Problem" }
+  /ha/camera/{id}:
+    get:
+      operationId: haCamera
+      tags: [homeassistant]
+      summary: A still image from a camera entity (cached 2 s)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, pattern: "^camera\\.[a-z0-9_]+$" } }]
+      responses:
+        "200": { description: The image, content: { image/jpeg: {}, image/png: {} } }
+        "502": { $ref: "#/components/responses/Problem" }
+  /ha/areas:
+    get:
+      operationId: haAreas
+      tags: [homeassistant]
+      summary: Home Assistant areas with the entities in each (an entity without its own area takes its device's); read-only, cached 5 min
+      parameters: [{ name: fresh, in: query, schema: { type: string, enum: ["1"] }, description: skip the cache }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { areas: { type: array, items: { type: object } }, noArea: { type: integer } } } } } }
+        "502": { $ref: "#/components/responses/Problem" }
+  /house:
+    get:
+      operationId: getHouse
+      tags: [house]
+      summary: The house model (spec/house.schema.json); custom is false until it is first saved
+      responses: { "200": { description: OK, content: { application/json: { schema: { type: object } } } } }
+    put:
+      operationId: saveHouse
+      tags: [house]
+      summary: Replace the house model (validated, written atomically to config/house.json)
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        "200": { description: Saved, content: { application/json: { schema: { type: object } } } }
+        "422": { $ref: "#/components/responses/Problem" }
+  /house/schema:
+    get:
+      operationId: houseSchema
+      tags: [house]
+      summary: The house model's JSON Schema
+      responses: { "200": { description: OK, content: { application/json: { schema: { type: object } } } } }
+  /house/layout:
+    get:
+      operationId: houseLayout
+      tags: [house]
+      summary: The model plus where every relevant entity goes (pins by hand, then HA area → room), the unplaced tray and the area mapping
+      responses: { "200": { description: OK, content: { application/json: { schema: { type: object } } } } }
+  /house/pins:
+    put:
+      operationId: saveHousePins
+      tags: [house]
+      summary: "Change pins: { pins: { entity_id: { floor, x, y } | { hidden: true } | null } }; null puts an entity back in its HA area"
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [pins], properties: { pins: { type: object } } } } } }
+      responses:
+        "200": { description: The new layout, content: { application/json: { schema: { type: object } } } }
+        "422": { $ref: "#/components/responses/Problem" }
+  /house/devices:
+    get:
+      operationId: houseDevices
+      tags: [house]
+      summary: A Markdown list of HA areas, their devices and the room each is placed in, to confirm with whoever lives there
+      responses:
+        "200": { description: OK, content: { text/markdown: {} } }
+        "502": { $ref: "#/components/responses/Problem" }
   /logs/server:
     get:
       operationId: queryServerLogs
@@ -944,6 +1238,76 @@ paths:
         "409": { $ref: "#/components/responses/Problem" }
         "426": { $ref: "#/components/responses/Problem" }
 
+  /usage:
+    get:
+      operationId: getUsage
+      tags: [usage]
+      summary: Paid and metered services found on this device
+      description: Discovered from variable names in the env file (`costs.envFile`), signed-in command line tools, installed apps and profiles, matched against server/modules/usageProviders.json. Usage numbers come from each provider's own usage or billing API where one exists (Claude Code, ElevenLabs, Cloudflare, GitHub, OpenAI and Anthropic with an admin key); cached 10 minutes per service. Never contains secret values. Also pushed live as the `usage` slice.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Usage" } } } }
+  /usage/refresh:
+    post:
+      operationId: refreshUsage
+      tags: [usage]
+      summary: Discover and read every service now
+      description: Bypasses the 10 minute cache, not a provider's 429 backoff. At most one scan every 30 s.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Usage" } } } }
+  /usage/overrides/{id}:
+    put:
+      operationId: setUsageOverride
+      tags: [usage]
+      summary: Set the owner's price, plan, renewal day or hide for a service
+      description: Needs the admin key or a paired device. Stored in config/usage.json and always wins over discovered values. An empty body returns the service to automatic.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[a-z0-9-]{1,40}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { monthly: { type: number, minimum: 0, maximum: 1000000 }, plan: { type: string, maxLength: 60 }, renewalDay: { type: integer, minimum: 1, maximum: 31 }, hidden: { type: boolean } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Usage" } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+  /costs:
+    get:
+      operationId: getCosts
+      tags: [usage]
+      summary: What it costs to run this server per month
+      description: Subscriptions and paid services (Usage), electricity (a Home Assistant power sensor, else an estimate from CPU load), fixed costs, and the server's Claude Code sessions priced at API list prices (shown beside the total, never added to it). Also pushed live as the `costs` slice. `null` until the first sample.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { oneOf: [{ $ref: "#/components/schemas/Costs" }, { type: "null" }] } } } }
+  /costs/fixed/{id}:
+    put:
+      operationId: setFixedCost
+      tags: [usage]
+      summary: Add or change a fixed monthly cost (domain, VPS, hardware)
+      description: Needs the admin key or a paired device.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[a-z0-9-]{1,40}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name, monthly], properties: { name: { type: string, maxLength: 60 }, monthly: { type: number, minimum: 0, maximum: 1000000 }, note: { type: string, maxLength: 120 } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Costs" } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteFixedCost
+      tags: [usage]
+      summary: Remove a fixed cost
+      description: Needs the admin key or a paired device.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Costs" } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+
 components:
   securitySchemes:
     device: { type: http, scheme: bearer, description: "Device token from POST /pair (or the server's local admin key)." }
@@ -958,6 +1322,55 @@ components:
     PermissionId: { name: id, in: path, required: true, schema: { type: string, enum: [full-disk-access, local-network, removable-volumes, files-folders, microphone, automation, docker-access, path-access, linger, firewall, selinux] } }
     Channel: { name: channel, in: path, required: true, schema: { type: string }, description: "Bot channel (telegram = the main bot)" }
   schemas:
+    UsageMeter:
+      type: object
+      required: [label, used, limit, unit, pct, resetsAt]
+      properties: { label: { type: string }, used: { type: number }, limit: { type: [number, "null"] }, unit: { type: string }, pct: { type: [number, "null"] }, resetsAt: { type: [integer, "null"], description: "Epoch seconds" } }
+    UsageService:
+      type: object
+      required: [id, name, icon, group, kind, via, status, billing, hidden, meters, monthly, costSource]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        icon: { type: string, description: "selfh.st slug or lucide:<name>" }
+        group: { type: string }
+        kind: { type: string, enum: [paid, free, local] }
+        via: { type: array, items: { type: string }, description: "How it was found (never values)" }
+        plan: { type: [string, "null"] }
+        planManual: { type: boolean }
+        meters: { type: array, items: { $ref: "#/components/schemas/UsageMeter" } }
+        spend: { type: [object, "null"], properties: { label: { type: string }, amount: { type: number } } }
+        monthly: { type: [number, "null"], description: "In the configured currency" }
+        costSource: { type: [string, "null"], enum: [manual, api, estimate, free, null] }
+        renewalDay: { type: [integer, "null"] }
+        renewsAt: { type: [integer, "null"] }
+        status: { type: string, enum: [ok, near, error, unknown] }
+        error: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        checkedAt: { type: [integer, "null"] }
+        billing: { type: string, format: uri }
+        hidden: { type: boolean }
+    Usage:
+      type: object
+      required: [services, totals, currency]
+      properties:
+        services: { type: array, items: { $ref: "#/components/schemas/UsageService" }, description: "Near-limit first, then errors, then by cost" }
+        totals: { type: object, properties: { monthly: { type: number }, known: { type: number }, actual: { type: number }, estimated: { type: number }, unknown: { type: integer, description: "Paid services without a price" } } }
+        currency: { type: string, examples: [EUR] }
+        checkedAt: { type: [integer, "null"] }
+        scanning: { type: boolean }
+    Costs:
+      type: object
+      required: [currency, headline, subscriptions, fixed, electricity, ai, trend]
+      properties:
+        currency: { type: string }
+        updatedAt: { type: integer }
+        headline: { type: object, properties: { monthly: { type: number }, actual: { type: number, description: "Prices you set or services reported, fixed costs, measured electricity" }, estimate: { type: number, description: "List prices and estimated electricity" } } }
+        subscriptions: { type: object, properties: { monthly: { type: number }, unknown: { type: integer }, items: { type: array, items: { type: object, properties: { id: { type: string }, name: { type: string }, monthly: { type: number }, source: { type: string } } } } } }
+        fixed: { type: object, properties: { monthly: { type: number }, items: { type: array, items: { type: object, properties: { id: { type: string }, name: { type: string }, monthly: { type: number }, note: { type: string } } } } } }
+        electricity: { type: object, properties: { monthly: { type: number }, watts: { type: [number, "null"] }, avgWatts: { type: [number, "null"] }, kwhMonth: { type: number }, price: { type: number }, source: { type: string, enum: [measured, estimate] }, machine: { type: string }, days: { type: integer } } }
+        ai: { type: object, description: "Claude Code sessions at API list prices (what it would cost; not part of the headline)", properties: { available: { type: boolean }, today: { type: number }, week: { type: number }, month: { type: number }, tokens: { type: number }, unpriced: { type: number }, days: { type: array, items: { type: object, properties: { date: { type: string }, cost: { type: number } } } }, top: { type: array, items: { type: object, properties: { label: { type: string }, kind: { type: string, enum: [bot, main, project, system] }, cost: { type: number }, tokens: { type: number }, share: { type: number }, models: { type: array, items: { type: string } } } } }, scannedAt: { type: [integer, "null"] } } }
+        trend: { type: array, items: { type: object, properties: { date: { type: string }, cost: { type: number }, ai: { type: number } } } }
     Permissions:
       type: object
       required: [platform, permissions, missingRequired]
@@ -995,6 +1408,10 @@ components:
         from: { type: string, description: Where the values live (variable names) }
         user: { type: [string, "null"] }
         hasUser: { type: boolean }
+    Transcript:
+      type: object
+      required: [text, language, ms]
+      properties: { text: { type: string, description: "empty when nothing was understood" }, language: { type: string }, ms: { type: integer } }
     FeedItem:
       type: object
       required: [id, kind, ts]
@@ -1011,6 +1428,8 @@ components:
         status: { type: string, enum: [running, ok, error] }
         ms: { type: number }
         out: { type: string }
+        sources: { type: array, description: "WebSearch / WebFetch steps: the pages found or read", items: { type: object, required: [title, url, domain], properties: { title: { type: string }, url: { type: string }, domain: { type: string }, snippet: { type: string }, error: { type: string } } } }
+        summary: { type: string, description: "WebSearch steps: the search summary" }
     EpochMs: { type: integer, description: Unix time in milliseconds }
     EpochS: { type: number, description: Unix time in seconds }
     Problem:
@@ -1033,7 +1452,7 @@ components:
         platform: { type: string, examples: [darwin, linux] }
         capabilities:
           type: array
-          items: { type: string, enum: [system, update, history, apps, jobs, scheduler, webhooks, catalog, install, logs-traces, audit, dashboards, ports, alerts, logs, bots, storage, claude, pairing, permissions, agent, voice, houseVoice, screen, voiceSession] }
+          items: { type: string, enum: [system, update, history, apps, jobs, scheduler, webhooks, catalog, install, logs-traces, audit, dashboards, ports, alerts, logs, bots, storage, claude, usage, pairing, permissions, agent, voice, houseVoice, screen, voiceSession, stt] }
     UpdateStatus:
       type: object
       required: [current, mode, updateAvailable, canApply, state, settings]
@@ -1117,10 +1536,30 @@ components:
         about: { type: [string, "null"] }
         reports: { type: [string, "null"] }
         project: { type: [string, "null"] }
+        touches: { $ref: "#/components/schemas/JobTouches" }
+        uses: { $ref: "#/components/schemas/JobUses" }
+        risk: { type: [string, "null"], enum: [read-only, writes, destructive, null] }
+        card: { type: string, enum: [ok, missing], description: "missing = the ID card lacks about, touches, uses or risk" }
+        gaps: { type: array, items: { type: string }, description: What the ID card still lacks }
         runs: { type: array, items: { type: object, properties: { t: { type: number }, ok: { type: boolean } } } }
         source: { type: string, const: server, description: Present on built-in jobs (id prefix `sd:`); crontab jobs have none }
         kind: { type: string, enum: [command, claude, http] }
         webhook: { type: boolean }
+    JobTouches:
+      type: [object, "null"]
+      description: "ID card: what the job changes. Required when creating a job"
+      properties:
+        apps: { type: array, items: { type: string }, description: Apps and services it reads, changes or restarts }
+        paths: { type: array, items: { type: string }, description: Disk paths it writes or deletes, with rough size }
+        data: { type: string, description: "What data or external systems it changes, e.g. deletes files older than 30 days" }
+    JobUses:
+      type: [object, "null"]
+      description: "ID card: what the job needs. Required when creating a job (tools or apis)"
+      properties:
+        tools: { type: array, items: { type: string } }
+        apis: { type: array, items: { type: string } }
+        secrets: { type: array, items: { type: string }, description: Environment variable names only, never values }
+        model: { type: string }
     JobSpec:
       type: object
       required: [name, kind]
@@ -1138,8 +1577,11 @@ components:
         timeout: { type: integer, default: 3600, maximum: 86400 }
         enabled: { type: boolean, default: true }
         webhook: { type: boolean, default: false }
-        about: { type: string }
+        about: { type: string, description: "ID card: two plain sentences, what it does and why. Required when creating" }
         category: { type: string }
+        touches: { $ref: "#/components/schemas/JobTouches" }
+        uses: { $ref: "#/components/schemas/JobUses" }
+        risk: { type: string, enum: [read-only, writes, destructive], description: "ID card: destructive = deletes, overwrites or restarts something. Required when creating" }
         error: { type: [string, "null"], readOnly: true, description: Why the job.yaml on disk is invalid }
         webhookUrl: { type: [string, "null"], readOnly: true }
     Run:
@@ -1231,6 +1673,14 @@ components:
         plan: { type: [string, "null"] }
         session: { type: [object, "null"], properties: { pct: { type: number }, resetsAt: { type: [number, "null"] } } }
         week: { type: [object, "null"], properties: { pct: { type: number }, resetsAt: { type: [number, "null"] } } }
+        windows:
+          type: array
+          description: Every limit window the usage API returned (five_hour, seven_day, per-model, new ones), in display order. session and week stay for older clients.
+          items:
+            type: object
+            required: [key, label, pct, resetsAt, hours]
+            properties: { key: { type: string }, label: { type: string }, pct: { type: number }, resetsAt: { type: [number, "null"] }, hours: { type: [number, "null"], description: "Window length; null when unknown" } }
+        noSessionLimit: { type: boolean, description: "five_hour came back null next to a weekly window: the plan has no 5-hour limit" }
         fetchedAt: { type: number }
         error: { type: [string, "null"] }
     ClaudeJob:

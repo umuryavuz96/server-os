@@ -35,7 +35,14 @@ switch (cmd) {
     await call("DELETE", `/devices/${encodeURIComponent(arg)}`);
     console.log("Revoked.");
     break;
+  case "jobs:check": { // every job (crontab, launchd, built-in) must have a full ID card; lists the gaps, exit 1 if any
+    const { jobs = [] } = await call("GET", "/state");
+    const bad = jobs.filter((j: { card?: string }) => j.card === "missing");
+    for (const j of bad) console.log(`${j.id}  ${j.name}  missing: ${j.gaps.join(", ")}`);
+    console.log(bad.length ? `${bad.length} of ${jobs.length} jobs have no complete ID card` : `All ${jobs.length} jobs have a complete ID card`);
+    process.exit(bad.length ? 1 : 0);
+  }
   default:
-    console.log("usage: server-os <init | pair | devices | revoke <id>>");
+    console.log("usage: server-os <init | pair | devices | revoke <id> | jobs:check>");
     process.exit(cmd ? 2 : 0);
 }

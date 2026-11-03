@@ -2,6 +2,7 @@
 import { setSlice, setMapEntry, getSlice } from "./store";
 import { every } from "./lib";
 import { logEvent } from "./core/logger";
+import { PROVIDERS, buildService, sortServices, totals } from "./modules/usage";
 
 export const DEMO = process.env.SERVER_OS_DEMO === "1";
 
@@ -100,9 +101,10 @@ export function startDemo() {
     { slug: "deploy", label: "Site deploy", description: "Git push → build → publish the static site", port: 9099, state: "running", listening: true, logMtime: t0 - 540, logTail: "[10:02:11] push received (main, 3 commits)\n[10:02:12] vite build\n[10:02:19] build ok, 412 files\n[10:02:20] published to /srv/www" },
     { slug: "notes", label: "Notes sync", description: "Git push → pull the notes vault", port: 9098, state: "running", listening: true, logMtime: t0 - 7200, logTail: "[08:15:02] push received\n[08:15:03] git pull: Already up to date." },
   ]); setSlice("botSessions", BOTS); setSlice("claudeUsage", null); setSlice("claudeJobs", []);
+  demoUsage();
 
   setSlice("jobs", JOBS.map((j, i) => ({ id: `cron:${i}`, name: j.name, schedule: j.schedule, when: j.when, enabled: j.status !== "paused", nextRun: j.status === "paused" ? null : t0 + j.next, prevRun: t0 - j.ago,
-    status: j.status, lastRun: t0 - j.ago, cause: j.status === "fail" ? "ACME server timeout" : "", log: "/var/log/demo", command: j.command, category: i < 3 ? "Backups" : "Maintenance", about: j.about, reports: null, project: null,
+    status: j.status, lastRun: t0 - j.ago, cause: j.status === "fail" ? "ACME server timeout" : "", log: "/var/log/demo", command: j.command, category: i < 3 ? "Backups" : "Maintenance", about: j.about, reports: null, project: null, touches: null, uses: null, risk: null, icons: null, card: "ok", gaps: [],
     runs: Array.from({ length: 10 }, (_, k) => ({ t: t0 - j.ago - k * 86400, ok: !(j.status === "fail" && k < 2) })) })));
 
   setSlice("alerts24", alertsPayload(1));
@@ -238,3 +240,20 @@ export const demoBotsFeed = () => {
   const meta = { session: { session: "demo", model: "claude-opus-5-5", contextTokens: 41200, contextLimit: 200000, permissionMode: "default", working: null, lastActivity: t - 100 }, effort: null, launchModel: "opus", jobs: [], schedules: [], requests: [], running: true, protected: true, tmux: true };
   return { items, meta };
 };
+
+/** Usage + Costs tabs in the demo: three made-up services and a small cost picture. */
+function demoUsage() {
+  const at = Date.now(), m = (label: string, pct: number, unit = "%", used = pct, limit: number | null = 100) => ({ label, used, limit, unit, pct, resetsAt: Math.floor(at / 1000) + 86400 * 9 });
+  const P = (id: string) => PROVIDERS.find((p) => p.id === id)!;
+  const services = sortServices([
+    buildService(P("claude-code"), { via: ["signed-in profile"] }, { res: { plan: "Max", meters: [m("5-hour session", 41), m("Week", 86)] }, at }),
+    buildService(P("elevenlabs"), { via: ["1 variable in the env file"] }, { res: { plan: "Creator", meters: [m("Characters", 31.5, "chars", 31_500, 100_000)] }, at }),
+    buildService(P("docker"), { via: ["app installed"] }, null), buildService(P("supabase"), { via: ["2 variables in the env file"] }, null),
+  ]);
+  setSlice("usage", { services, totals: totals(services), currency: "EUR", checkedAt: Math.floor(at / 1000), scanning: false });
+  const day = (i: number) => new Date(at - (29 - i) * 86400000).toLocaleDateString("sv-SE");
+  setSlice("costs", { currency: "EUR", updatedAt: Math.floor(at / 1000), headline: { monthly: 92.4, actual: 22, estimate: 70.4 },
+    subscriptions: { monthly: 90, unknown: 1, items: services.filter((x) => x.monthly).map((x) => ({ id: x.id, name: x.name, monthly: x.monthly!, source: x.costSource ?? "estimate" })) }, fixed: { monthly: 0, items: [] },
+    electricity: { monthly: 2.4, watts: 11.2, avgWatts: 11, kwhMonth: 8, price: 0.3, source: "estimate", machine: "Mac mini M4", days: 0 },
+    ai: { available: false, today: 0, week: 0, month: 0, tokens: 0, unpriced: 0, days: [], top: [], scannedAt: null }, trend: Array.from({ length: 30 }, (_, i) => ({ date: day(i), cost: 3.1, ai: 0 })) });
+}

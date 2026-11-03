@@ -1,0 +1,15 @@
+{
+  "_doc": "Typical wall power in watts at idle and under full CPU load, matched on the machine model (macOS hw.model, Linux DMI/device-tree name) as a regex, first row wins. Override with costs.power.idleW / maxW.",
+  "machines": [
+    { "match": "^Mac16,(10|15)$", "name": "Mac mini M4", "idleW": 4, "maxW": 40 },
+    { "match": "^Mac14,(3|12)$", "name": "Mac mini M2", "idleW": 7, "maxW": 45 },
+    { "match": "^Macmini9,1$", "name": "Mac mini M1", "idleW": 7, "maxW": 39 },
+    { "match": "^Macmini", "name": "Mac mini (Intel)", "idleW": 20, "maxW": 85 },
+    { "match": "^Mac13,", "name": "Mac Studio", "idleW": 10, "maxW": 120 },
+    { "match": "^(MacBook|Mac1[0-9],)", "name": "MacBook", "idleW": 6, "maxW": 40 },
+    { "match": "Raspberry Pi 5", "name": "Raspberry Pi 5", "idleW": 3, "maxW": 12 },
+    { "match": "Raspberry Pi", "name": "Raspberry Pi", "idleW": 2.5, "maxW": 7 },
+    { "match": "NUC|Mini|mini", "name": "Mini PC", "idleW": 8, "maxW": 45 }
+  ],
+  "default": { "name": "Generic server", "idleW": 15, "maxW": 70 }
+}

@@ -153,7 +153,8 @@ export function buildReport(listeners: Listener[], docker: DockerMap[], routes: 
   };
 }
 
-export async function collectPorts(apps: AppRef[]): Promise<PortsReport> {
+/** Everything listening on this machine right now (TCP, plus well-known UDP). */
+export async function collectListeners(): Promise<Listener[]> {
   let listeners: Listener[];
   if (process.platform === "darwin") {
     const [t, u] = await Promise.all([run(["netstat", "-anv", "-p", "tcp"], 10_000), run(["netstat", "-anv", "-p", "udp"], 10_000)]);
@@ -162,6 +163,11 @@ export async function collectPorts(apps: AppRef[]): Promise<PortsReport> {
   } else {
     listeners = parseSs((await run(["ss", "-Hlntup"], 10_000)).out).filter((l) => l.proto === "tcp" || l.port < 1024);
   }
+  return listeners;
+}
+
+export async function collectPorts(apps: AppRef[]): Promise<PortsReport> {
+  const listeners = await collectListeners();
   const docker = parseDockerPorts((await run(["docker", "ps", "--format", "{{.Names}}|{{.Ports}}"], 10_000)).out);
   const caddy = CADDYFILES.find(existsSync);
   const routes = caddy ? parseCaddy(readFileSync(caddy, "utf8"), caddy) : [];

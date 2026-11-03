@@ -4,3 +4,4 @@ export * from "./native";
 export * from "./rearm";
 export * from "./dashsent";
 export * from "./idle";
+export * from "./approvals";

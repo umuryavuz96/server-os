@@ -4,9 +4,10 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { join, normalize } from "node:path";
 import { timingSafeEqual } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { log, every } from "./lib";
 import { getSlice, getState, subscribe, setSlice } from "./store";
+import { addToCatalog, discover, ignore } from "./modules/discover";
 import { SVC, appRefs, computeApps, deleteApp, deletePlan, findItem, startAppCollectors, toggle } from "./apps";
 import { envKeyNames, linkLogin, listLogins, revealLogin } from "./modules/logins";
 import { startSystemCollectors, history, historyRange, RANGES, type Range } from "./system";
@@ -16,12 +17,16 @@ import { sampleFile, showcase } from "./modules/voiceShowcase";
 import { cloudEnabled, setCloudEnabled, usage as cloudUsage } from "./modules/cloudVoice";
 import { houseVoice, houseVoiceAvailable, houseVoiceWatchdog, setHouseVoice, voiceSessionAvailable } from "./modules/houseVoice";
 import { DEMO, demoBotsFeed, startDemo, demoToggle, demoRunJob, demoJobLog, demoInstall, demoStorage } from "./demo";
+import { readBlackbox } from "./blackbox";
 import { startOpsCollectors, alerts, readJobs, runJob, tail } from "./ops";
 import { startLifecycle, appLogs } from "./lifecycle";
 import { refreshUsage, startClaudeCollectors } from "./claude";
+import { deleteFixed, publishUsage, scanUsage, setFixed, setOverride, startUsageCollectors } from "./modules/usage";
+import { publishCosts, startCostCollectors } from "./modules/costs";
 import { config, dir, ROOT, VERSION } from "./core/config";
 import { audit, logEvent } from "./core/logger";
 import { completePairing, issueDevice, listDevices, revoke, startPairing } from "./core/devices";
+import { newJobCardError } from "./jobCard";
 import { deleteSpec, getRun, getSpec, listRuns, onJobsChange, saveSpec, serverJobs, slug, startRun, startScheduler, webhookSecret, type JobSpec } from "./modules/scheduler";
 import { categories, detail, dockerHub, genres, getItem, home, slugify, refresh as refreshCatalog, refreshRecipes, search, sourceStatus, startCatalog } from "./modules/catalog";
 import { agentChecklist, agentInstall, askAgent, getInstalled, getOperation, getSecrets, install, listInstalled, makePlan, newSecret, onAppsChanged, setReady, setup, startInstaller, uninstall } from "./modules/installer";
@@ -34,6 +39,8 @@ import { parseRes } from "./modules/displayMode";
 import { recoverDisplay, resolutionOptions, setResolution, shutdownScreen, resolveScreen, screenConfig, screenSocket, screenStatus, upgradeScreen, vncListening } from "./modules/screen";
 import { collectPorts, panelAddresses } from "./modules/ports";
 import { deleteDashboard, ensureDefault, getDashboard, listDashboards, saveDashboard, SCHEMA as DASH_SCHEMA } from "./modules/dashboards";
+import { addWatchSource, bridgeStatus, haConfigured, callService, cameraSnapshot, getEntity, history as haHistory, HISTORY_RANGES, listEntities, refreshWatched, registry, startHa, type HistoryRange } from "./modules/ha";
+import { devicesMarkdown, getHouse, houseEntities, isCustom, layout as houseLayout, noteShown, saveHouse, savePins, SCHEMA as HOUSE_SCHEMA } from "./modules/house";
 import { errorSummary, queryAudit, queryLogs, trace as getTrace } from "./modules/logs";
 import { problem, requireAdmin, requireAuth, signInCookie, signOutCookie, tracing, type Env } from "./core/http";
 import { changePassword, clearFailures, createOwner, hasOwner, noteFailure, ownerName, setupToken, tooManyAttempts, verifyOwner } from "./core/owner";
@@ -41,6 +48,14 @@ import { getConnInfo } from "hono/bun";
 import type { Server } from "bun";
 import type { ScreenData } from "./modules/screen";
 import { botRoutes, rearmWatchers } from "./botRoutes";
+import { agmsgNetRoutes, agmsgNetAvailable } from "./agmsgNet";
+import { agentHooksRoutes } from "./agentHooks";
+import { modelRoutingRoutes } from "./modelRouting";
+import { arsenalRoutes } from "./arsenal";
+import { ramRoutes, startRamCollectors } from "./ram";
+import { voiceChatRoutes } from "./voiceChatRoutes";
+import { demoVoiceRoutes } from "./demoVoice";
+import { sttInfo } from "./modules/voiceChat";
 import { NativeBots, botsProvider, nativeMissing } from "./modules/bots";
 import { applyUpdate, checkForUpdate, saveSettings as saveUpdateSettings, startUpdater, updateStatus } from "./modules/update";
 
@@ -53,7 +68,7 @@ app.use("*", tracing);
 // The API lives on one sub-app, mounted at /api/v1 (the documented contract, spec/openapi.yaml) and at
 // /svc-api (the original paths, kept so existing web/app builds keep working).
 const api = new Hono<Env>();
-api.use("*", requireAuth((p) => /\/(info|health|pair|auth\/(me|setup|login))$/.test(p) || /\/hooks\/[^/]+$/.test(p))); // webhooks carry their own secret
+api.use("*", requireAuth((p) => /\/(info|health|pair|auth\/(me|setup|login))$/.test(p) || /\/hooks\/[^/]+$/.test(p) || /\/approvals\/hook$/.test(p) || /\/voice\/clips\/[0-9a-f]{32}\.wav$/.test(p))); // webhooks carry their own secret; the permission hook is checked for loopback in its route; a reply clip for a speaker is an unguessable, short-lived id
 
 api.get("/stream", (c) =>
   streamSSE(c, async (stream) => {
@@ -164,9 +179,41 @@ api.patch("/house-voice", async (c) => {
   return c.json(r);
 });
 api.get("/logs", async (c) => c.json(await appLogs(c.req.query("app") ?? "")));
+api.get("/blackbox", (c) => c.json(readBlackbox()));
 api.get("/alerts", (c) => c.json(alerts(Number(c.req.query("days")) >= 7 ? 7 : 1)));
 
 api.post("/claude/usage/refresh", async (c) => { await refreshUsage(); return c.json({ ok: true }); });
+
+// Usage + Costs tabs (server/modules/usage.ts, costs.ts): discovered paid services with their usage, and what the server costs per month.
+// Both are also pushed live as the `usage` and `costs` slices. Edits to the owner's numbers need the admin key or a paired device.
+api.get("/usage", (c) => c.json(getSlice("usage") ?? { services: [], totals: { monthly: 0, known: 0, estimated: 0, unknown: 0, actual: 0 }, currency: "USD", checkedAt: null, scanning: true }));
+api.post("/usage/refresh", async (c) => { await scanUsage(true); return c.json(getSlice("usage")); });
+api.put("/usage/overrides/:id", requireAdmin, async (c) => {
+  const b = await jsonBody(c);
+  if (!b) return problem(c, 415, "Unsupported Media Type", "JSON only");
+  const err = setOverride(c.req.param("id"), b);
+  audit(c.get("actor"), "usage.override", c.req.param("id"), err ? "failed" : "ok", c.get("trace"), err ? { error: err } : {});
+  if (err) return problem(c, 422, "Invalid override", err);
+  publishUsage(); publishCosts();
+  return c.json(getSlice("usage"));
+});
+api.get("/costs", (c) => c.json(getSlice("costs") ?? null));
+api.put("/costs/fixed/:id", requireAdmin, async (c) => {
+  const b = await jsonBody(c);
+  if (!b) return problem(c, 415, "Unsupported Media Type", "JSON only");
+  const err = setFixed(c.req.param("id"), b);
+  audit(c.get("actor"), "costs.fixed.set", c.req.param("id"), err ? "failed" : "ok", c.get("trace"), err ? { error: err } : {});
+  if (err) return problem(c, 422, "Invalid cost", err);
+  publishCosts();
+  return c.json(getSlice("costs"));
+});
+api.delete("/costs/fixed/:id", requireAdmin, (c) => {
+  const ok = deleteFixed(c.req.param("id"));
+  audit(c.get("actor"), "costs.fixed.delete", c.req.param("id"), ok ? "ok" : "failed", c.get("trace"));
+  if (!ok) return problem(c, 404, "Not Found", "No such fixed cost");
+  publishCosts();
+  return c.json(getSlice("costs"));
+});
 
 // Bot manager. Claude OS (:3090, integrations.claudeOS) owns the bot logic when it is configured: only these endpoints
 // are forwarded and POSTs must be JSON. Without it (or with bots.provider: native) Server OS runs the bots itself in
@@ -229,11 +276,18 @@ api.post("/cos/*", async (c) => {
   return new Response(r.body, { status: r.status, headers: { "Content-Type": "application/json" } });
 });
 
+if (DEMO) demoVoiceRoutes(api); // the Voice page's chat, before the generic demo feed below
 if (DEMO) api.get("/bots/:ch/feed", (c) => streamSSE(c, async (stream) => {
   await stream.writeSSE({ event: "reset", data: JSON.stringify(demoBotsFeed()) });
   while (!stream.aborted) { await stream.sleep(15_000); await stream.writeSSE({ event: "ping", data: "" }); }
 }));
-botRoutes(api, COS, NATIVE);
+botRoutes(api, COS, NATIVE, (c) => onServer(c));
+agmsgNetRoutes(api);
+agentHooksRoutes(api);
+modelRoutingRoutes(api);
+arsenalRoutes(api);
+ramRoutes(api);
+voiceChatRoutes(api, { port: PORT, demo: DEMO });
 
 // Bot instructions: the CLAUDE.md in a bot's working folder. The folder comes from the bot manager's own list
 // (never from the request); the main bot's file is read-only here.
@@ -323,6 +377,8 @@ api.get("/jobs", (c) => c.json({ jobs: serverJobs() }));
 api.post("/jobs", async (c) => {
   const b = await jsonBody(c);
   if (!b) return problem(c, 415, "Unsupported Media Type", "JSON only");
+  const cardErr = newJobCardError(b);
+  if (cardErr) return problem(c, 422, "Invalid job", cardErr);
   let id = String(b.id ?? "") || slug(String(b.name ?? ""));
   if (!b.id) for (let n = 2; getSpec(id); n++) id = `${slug(String(b.name ?? ""))}-${n}`;
   else if (getSpec(id)) return problem(c, 409, "Conflict", `job ${id} exists`);
@@ -426,6 +482,27 @@ api.delete("/apps/:id", (c) => {
   catch (e) { return problem(c, 404, "Not Found", (e as Error).message); }
 });
 // Delete any app that isn't a locked core service: Server OS installs uninstall; hand-catalog apps are taken apart.
+// Found on this server: Caddy sites, containers and LaunchAgents that are not on the Apps tab yet.
+api.get("/apps/discovered", async (c) => c.json({ items: DEMO ? [] : await discover(PORT) }));
+api.post("/apps/discovered/add", requireAdmin, async (c) => {
+  const b = await jsonBody(c);
+  if (!b) return problem(c, 415, "Unsupported Media Type", "JSON only");
+  const found = (await discover(PORT)).find((x) => x.id === String(b.id ?? ""));
+  if (!found) return problem(c, 404, "Not Found", "Not found on this server any more");
+  try {
+    const r = addToCatalog(found, { name: typeof b.name === "string" ? b.name : undefined, group: typeof b.group === "string" ? b.group : undefined, about: typeof b.about === "string" ? b.about : undefined });
+    computeApps();
+    audit(c.get("actor"), "apps.discovered.add", found.id, "ok", c.get("trace"));
+    return c.json({ ok: true, ...r });
+  } catch (e) { return problem(c, 409, "Can't add", (e as Error).message); }
+});
+api.post("/apps/discovered/ignore", requireAdmin, async (c) => {
+  const b = await jsonBody(c);
+  if (!b || typeof b.id !== "string") return problem(c, 422, "Can't ignore", "id needed");
+  ignore(b.id);
+  audit(c.get("actor"), "apps.discovered.ignore", b.id, "ok", c.get("trace"));
+  return c.json({ ok: true });
+});
 api.get("/apps/delete-plan", (c) => c.json(deletePlan(c.req.query("name") ?? "")));
 api.post("/apps/delete", async (c) => {
   const b = await jsonBody(c);
@@ -521,6 +598,105 @@ api.post("/apps/:id/ready", async (c) => {
   } catch (e) { return problem(c, 422, "Can't save the ready card", (e as Error).message); }
 });
 
+// Home Assistant entity cards (server/modules/ha.ts): the token stays here; service calls are limited to an allowlist of domains.
+api.get("/ha", (c) => c.json(bridgeStatus()));
+api.get("/ha/entities", async (c) => c.json(await listEntities(c.req.query("q") ?? "", c.req.query("domain") ?? "", Math.min(200, Number(c.req.query("limit")) || 60))));
+api.get("/ha/entities/:id", async (c) => { const e = await getEntity(c.req.param("id")); return e ? c.json(e) : problem(c, 404, "Not Found", "No such entity"); });
+api.post("/ha/call", async (c) => {
+  const b = await jsonBody(c);
+  if (!b) return problem(c, 415, "Unsupported Media Type", "JSON only");
+  const dry = c.req.query("dry") === "1", target = `${String(b.domain)}.${String(b.service)}`;
+  const r = await callService(b.domain as string, b.service as string, (b.data ?? {}) as Record<string, unknown>, { dry });
+  audit(c.get("actor"), r.dry ? "ha.call.dry" : "ha.call", `${target} ${JSON.stringify((b.data as { entity_id?: unknown } | undefined)?.entity_id ?? "")}`, r.ok ? "ok" : "failed", c.get("trace"));
+  return r.ok ? c.json(r) : problem(c, r.status as 403 | 404 | 502, r.status === 403 ? "Forbidden" : "Home Assistant error", r.detail);
+});
+api.get("/ha/history/:id", async (c) => {
+  const range = (c.req.query("range") ?? "24h") as HistoryRange;
+  if (!(range in HISTORY_RANGES)) return problem(c, 400, "Bad Request", "range: 1h, 2h, 6h, 24h, 7d or 30d");
+  const s = await haHistory(c.req.param("id"), range, Math.min(400, Math.max(10, Number(c.req.query("points")) || 120)));
+  return s ? c.json(s) : problem(c, 502, "Home Assistant error", "No history for that entity");
+});
+api.get("/ha/camera/:id", async (c) => {
+  const s = await cameraSnapshot(c.req.param("id"));
+  return s ? new Response(s.body as unknown as BodyInit, { headers: { "Content-Type": s.type, "Cache-Control": "no-store" } }) : problem(c, 502, "Home Assistant error", "No snapshot from that camera");
+});
+
+// HA areas, with the entities in each (an entity without its own area takes its device's). Read-only.
+api.get("/ha/areas", async (c) => {
+  const r = await registry(c.req.query("fresh") === "1");
+  if (!r) return problem(c, 502, "Home Assistant error", "Couldn't read the area registry");
+  const by = new Map<string, string[]>();
+  for (const e of r.entities) if (e.area) by.set(e.area, [...(by.get(e.area) ?? []), e.id]);
+  return c.json({ areas: r.areas.map((a) => ({ ...a, entities: (by.get(a.id) ?? []).sort() })), noArea: r.entities.filter((e) => !e.area).length });
+});
+
+// The House page (server/modules/house.ts): the model, and where each device's pin goes.
+api.get("/house", (c) => c.json({ house: getHouse(), custom: isCustom() }));
+api.get("/house/schema", (c) => c.json(HOUSE_SCHEMA));
+api.put("/house", async (c) => {
+  const b = await jsonBody(c);
+  if (!b) return problem(c, 415, "Unsupported Media Type", "JSON only");
+  const err = saveHouse(b as never);
+  audit(c.get("actor"), "house.save", "house", err ? "failed" : "ok", c.get("trace"));
+  return err ? problem(c, 422, "Invalid house", err) : c.json({ house: getHouse(), custom: true });
+});
+async function houseView() {
+  const house = getHouse(), r = await registry();
+  const l = houseLayout(house, r?.entities ?? [], r?.areas ?? []);
+  if (r) { noteShown(l); refreshWatched(); }
+  return { house, custom: isCustom(), online: !!r, ...l };
+}
+api.get("/house/layout", async (c) => c.json(await houseView()));
+api.put("/house/pins", async (c) => {
+  const b = await jsonBody(c);
+  if (!b) return problem(c, 415, "Unsupported Media Type", "JSON only");
+  const err = savePins(b.pins as never);
+  audit(c.get("actor"), "house.pins", Object.keys((b.pins ?? {}) as object).slice(0, 10).join(" "), err ? "failed" : "ok", c.get("trace"));
+  return err ? problem(c, 422, "Invalid pins", err) : c.json(await houseView());
+});
+// Photo views made by `bun run house:render` (tools/house-render): manifest.json plus the pictures it names.
+api.get("/house/render/:file", async (c) => {
+  const name = c.req.param("file");
+  if (!/^[a-z0-9][a-z0-9_.-]{0,120}\.(webp|png|json|glb)$/.test(name)) return problem(c, 404, "Not Found", "No such render");
+  const f = Bun.file(join(dir("data"), "house-render", name));
+  if (!(await f.exists())) return problem(c, 404, "Not Found", name === "manifest.json" ? "The house hasn't been rendered yet: run bun run house:render" : "No such render");
+  // the page asks with ?v=<render time>, so a file under one URL never changes: cache it for long, revalidate by ETag
+  const etag = `"${f.size.toString(36)}-${Math.round(f.lastModified).toString(36)}"`;
+  const headers = { ETag: etag, "Cache-Control": name.endsWith(".json") ? "no-cache" : "private, max-age=31536000, immutable" };
+  if (c.req.header("If-None-Match") === etag) return new Response(null, { status: 304, headers });
+  return new Response(f, { headers: { ...headers, "Content-Type": name.endsWith(".glb") ? "model/gltf-binary" : f.type } });
+});
+// Eye-level stills made by `bun run house:render --views cams.json`: <name>-day.webp + <name>-evening.webp in data/house-views.
+// Never real photos, only renders.
+const VIEWS_DIR = () => join(dir("data"), "house-views");
+api.get("/house/views", (c) => {
+  const d = VIEWS_DIR(), names = new Map<string, { day?: number; evening?: number }>();
+  try {
+    for (const f of readdirSync(d)) {
+      const m = /^([a-z0-9][a-z0-9_-]{0,80})-(day|evening)\.webp$/.exec(f);
+      if (m) names.set(m[1], { ...names.get(m[1]), [m[2]]: Math.round(statSync(join(d, f)).mtimeMs) });
+    }
+  } catch { /* none rendered yet */ }
+  const views = [...names].filter(([, v]) => v.day && v.evening).sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, v]) => ({ name, label: name.replace(/^\d+-/, "").replace(/-/g, " ").replace(/^./, (x) => x.toUpperCase()), v: Math.max(v.day!, v.evening!) }));
+  return c.json({ views });
+});
+api.get("/house/views/:file", async (c) => {
+  const name = c.req.param("file");
+  if (!/^[a-z0-9][a-z0-9_-]{0,80}-(day|evening)\.webp$/.test(name)) return problem(c, 404, "Not Found", "No such view");
+  const f = Bun.file(join(VIEWS_DIR(), name));
+  if (!(await f.exists())) return problem(c, 404, "Not Found", "No such view");
+  const etag = `"${f.size.toString(36)}-${Math.round(f.lastModified).toString(36)}"`;
+  const headers = { ETag: etag, "Cache-Control": "private, max-age=31536000, immutable" }; // the page asks with ?v=<mtime>
+  if (c.req.header("If-None-Match") === etag) return new Response(null, { status: 304, headers });
+  return new Response(f, { headers: { ...headers, "Content-Type": "image/webp" } });
+});
+api.get("/house/devices", async (c) => {
+  const r = await registry(c.req.query("fresh") === "1");
+  if (!r) return problem(c, 502, "Home Assistant error", "Couldn't read the area registry");
+  return c.body(devicesMarkdown(getHouse(), r.entities, r.areas), 200, { "Content-Type": "text/markdown; charset=utf-8" });
+});
+
 // JSON dashboards.
 api.get("/dashboards", (c) => c.json({ dashboards: listDashboards() }));
 api.get("/dashboards/schema", (c) => c.json(DASH_SCHEMA));
@@ -530,11 +706,13 @@ api.put("/dashboards/:id", async (c) => {
   if (!b) return problem(c, 415, "Unsupported Media Type", "JSON only");
   const err = saveDashboard(c.req.param("id"), b as never);
   audit(c.get("actor"), "dashboard.save", c.req.param("id"), err ? "failed" : "ok", c.get("trace"));
+  if (!err) refreshWatched();
   return err ? problem(c, 422, "Invalid dashboard", err) : c.json(getDashboard(c.req.param("id")));
 });
 api.delete("/dashboards/:id", (c) => {
   const ok = deleteDashboard(c.req.param("id"));
   audit(c.get("actor"), "dashboard.delete", c.req.param("id"), ok ? "ok" : "failed", c.get("trace"));
+  if (ok) refreshWatched();
   return ok ? c.body(null, 204) : problem(c, 404, "Not Found", "No such dashboard");
 });
 
@@ -597,8 +775,8 @@ api.get("/screen/resolution", async (c) => {
 });
 
 // v1-only: server info, pairing, devices.
-const CAPABILITIES = ["system", "update", "history", "apps", "jobs", "scheduler", "webhooks", "catalog", "install", "logs-traces", "audit", "dashboards", "ports", "alerts", "logs", "claude", "pairing", ...(process.platform === "darwin" || process.platform === "linux" ? ["permissions"] : []),
-  ...(BOTS_PROVIDER || DEMO ? ["bots"] : []), ...(storageAvailable() ? ["storage"] : []), ...(agentAvailable() ? ["agent"] : []), "voice", ...(houseVoiceAvailable() ? ["houseVoice"] : []), ...(screenConfig() && !DEMO ? ["screen"] : []), ...(voiceSessionAvailable() ? ["voiceSession"] : [])];
+const CAPABILITIES = ["system", "update", "history", "apps", "jobs", "scheduler", "webhooks", "catalog", "install", "logs-traces", "audit", "dashboards", "ports", "alerts", "logs", "claude", "usage", "pairing", ...(process.platform === "darwin" || process.platform === "linux" ? ["permissions"] : []),
+  ...(BOTS_PROVIDER || DEMO ? ["bots"] : []), ...(agmsgNetAvailable() ? ["agmsg"] : []), ...(storageAvailable() ? ["storage"] : []), ...(agentAvailable() ? ["agent"] : []), "voice", ...(haConfigured() && config.integrations.house === true ? ["house"] : []), ...(houseVoiceAvailable() ? ["houseVoice"] : []), ...(screenConfig() && !DEMO ? ["screen"] : []), ...(voiceSessionAvailable() || DEMO ? ["voiceSession"] : []), ...(sttInfo().available || DEMO ? ["stt"] : [])];
 // addresses: where this panel answers (Caddy names → this port), so the panel and the apps can show "open on other devices".
 api.get("/info", (c) => c.json({ name: config.name, version: VERSION, api: "v1", auth: config.auth, platform: process.platform, capabilities: CAPABILITIES, addresses: panelAddresses(PORT) }));
 // Liveness for the self-updater's health check (and load balancers): open, cheap, says which version answers.
@@ -733,13 +911,22 @@ app.get("*", (c) => {
   const p = normalize(c.req.path).replace(/^\/+/, "");
   const file = p && !p.startsWith("..") && existsSync(join(DIST, p)) ? join(DIST, p) : join(DIST, "index.html");
   const html = file.endsWith(".html");
-  return new Response(Bun.file(file), { headers: { "Cache-Control": html ? "no-store" : "max-age=31536000, immutable" } });
+  // Vite's assets/ carry a content hash in the name: cache them for good. Everything else from web/public (manifest, app
+  // icons, wallpaper) keeps its name across releases, so the browser revalidates it.
+  const cache = html ? "no-store" : p.startsWith("assets/") ? "max-age=31536000, immutable" : "no-cache";
+  const headers: Record<string, string> = { "Cache-Control": cache };
+  if (p.endsWith(".webmanifest")) headers["Content-Type"] = "application/manifest+json";
+  return new Response(Bun.file(file), { headers });
 });
 
 if (DEMO) startDemo(); // made-up data, no collectors touch the machine
 else {
 startAppCollectors();
 startSystemCollectors();
+startRamCollectors();
+addWatchSource(houseEntities);
+startHa();
+void houseView().catch(() => {}); // the house's pins stream live from the start, not only once the page opens
 startConsumerCollector(every);
 startOpsCollectors();
 }
@@ -765,6 +952,8 @@ if (NATIVE && !DEMO) every(30_000, () => rearmWatchers(NATIVE));
 if (!DEMO) every(30_000, async () => { setSlice("ports", await collectPorts(appRefs())); });
 // Claude account usage limits + every running Claude process.
 if (!DEMO) startClaudeCollectors();
+// Paid-service discovery + usage, and the cost of running this server.
+if (!DEMO) { startUsageCollectors(); startCostCollectors(); }
 
 // HOST=0.0.0.0 to serve the LAN directly; by default only a local proxy (Caddy, Tailscale Serve) reaches it.
 export default { port: PORT, hostname: process.env.HOST || "127.0.0.1", fetch: app.fetch, idleTimeout: 0, websocket: screenSocket };

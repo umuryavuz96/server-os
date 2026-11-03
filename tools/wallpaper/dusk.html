@@ -1,0 +1,87 @@
+<!doctype html>
+<!-- Server OS desktop wallpaper "Dusk": a lake between mountain ridges at sunset, drawn from a seeded noise so it is
+     our own picture. Render: screenshot the canvas at 2560x1600 in headless Chromium, then cwebp -q 82 → web/public/wallpaper/dusk.webp -->
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="2560" height="1600"></canvas>
+<script>
+const W = 2560, H = 1600, c = document.getElementById("c"), g = c.getContext("2d");
+let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+const HZ = H * 0.66; // horizon / waterline
+
+// sky
+let sky = g.createLinearGradient(0, 0, 0, HZ);
+[[0, "#0f1530"], [.28, "#26294d"], [.52, "#5b4468"], [.72, "#b8686a"], [.88, "#ec9a62"], [1, "#f7cf8e"]].forEach(([o, col]) => sky.addColorStop(o, col));
+g.fillStyle = sky; g.fillRect(0, 0, W, HZ);
+// sun glow
+const sx = W * 0.63, sy = HZ - 30;
+let sun = g.createRadialGradient(sx, sy, 0, sx, sy, W * 0.55);
+sun.addColorStop(0, "rgba(255,226,170,.95)"); sun.addColorStop(.06, "rgba(255,196,128,.65)"); sun.addColorStop(.3, "rgba(240,140,100,.22)"); sun.addColorStop(1, "rgba(240,140,100,0)");
+g.fillStyle = sun; g.fillRect(0, 0, W, H);
+// cloud streaks
+g.filter = "blur(26px)";
+for (let i = 0; i < 26; i++) {
+  const y = HZ * (0.12 + rnd() * 0.62), x = rnd() * W, w = 300 + rnd() * 900, h = 10 + rnd() * 34;
+  const warm = y / HZ;
+  g.fillStyle = `rgba(${200 + 55 * warm | 0},${120 + 70 * warm | 0},${140 - 20 * warm | 0},${0.10 + rnd() * 0.22})`;
+  g.beginPath(); g.ellipse(x, y, w, h, -0.03, 0, Math.PI * 2); g.fill();
+}
+g.filter = "none";
+// stars (top only, faint)
+for (let i = 0; i < 160; i++) { const y = rnd() * HZ * 0.32; g.fillStyle = `rgba(255,255,255,${(0.12 + rnd() * 0.4) * (1 - y / (HZ * 0.32))})`; g.fillRect(rnd() * W, y, 1.6, 1.6); }
+
+// ridge: midpoint displacement
+function ridge(base, amp, rough, n = 10) {
+  let pts = [base + (rnd() - .5) * amp, base + (rnd() - .5) * amp];
+  for (let k = 0, a = amp; k < n; k++, a *= rough) {
+    const next = [];
+    for (let i = 0; i < pts.length - 1; i++) next.push(pts[i], (pts[i] + pts[i + 1]) / 2 + (rnd() - .5) * a);
+    next.push(pts[pts.length - 1]); pts = next;
+  }
+  return pts;
+}
+const layers = [
+  { base: HZ - 250, amp: 520, rough: .52, top: "#8c6f90", bot: "#b8858a", haze: .0 },
+  { base: HZ - 150, amp: 380, rough: .55, top: "#5d4c6f", bot: "#8a6a7c", haze: 0 },
+  { base: HZ - 70,  amp: 260, rough: .56, top: "#3a3150", bot: "#5a4660", haze: 0 },
+  { base: HZ - 18,  amp: 120, rough: .58, top: "#221d33", bot: "#2e2538", haze: 0 },
+];
+const drawn = [];
+for (const L of layers) {
+  const p = ridge(L.base, L.amp, L.rough), step = W / (p.length - 1);
+  const top = Math.min(...p);
+  const gr = g.createLinearGradient(0, top, 0, HZ);
+  gr.addColorStop(0, L.top); gr.addColorStop(1, L.bot);
+  g.fillStyle = gr; g.beginPath(); g.moveTo(0, HZ);
+  p.forEach((y, i) => g.lineTo(i * step, Math.min(y, HZ)));
+  g.lineTo(W, HZ); g.closePath(); g.fill();
+  // atmospheric haze above each ridge's foot
+  const hz = g.createLinearGradient(0, HZ - 120, 0, HZ);
+  hz.addColorStop(0, "rgba(240,170,130,0)"); hz.addColorStop(1, "rgba(240,170,130,.18)");
+  g.fillStyle = hz; g.fillRect(0, HZ - 120, W, 120);
+  drawn.push({ p, step, gr: [L.top, L.bot] });
+}
+
+// water: mirror the sky+ridges, darkened and softened
+const img = g.getImageData(0, 0, W, HZ);
+const tmp = document.createElement("canvas"); tmp.width = W; tmp.height = HZ; tmp.getContext("2d").putImageData(img, 0, 0);
+g.save(); g.translate(0, HZ * 2); g.scale(1, -1); g.filter = "blur(6px)"; g.globalAlpha = .75;
+g.drawImage(tmp, 0, 0); g.restore(); g.filter = "none"; g.globalAlpha = 1;
+let wat = g.createLinearGradient(0, HZ, 0, H);
+wat.addColorStop(0, "rgba(20,16,34,.25)"); wat.addColorStop(1, "rgba(10,9,20,.88)");
+g.fillStyle = wat; g.fillRect(0, HZ, W, H - HZ);
+// shimmer on the sun's path
+for (let i = 0; i < 260; i++) {
+  const y = HZ + 6 + Math.pow(rnd(), 1.6) * (H - HZ) * .8, spread = 60 + (y - HZ) * 1.1;
+  const x = sx + (rnd() - .5) * spread * 2, w = 10 + rnd() * (30 + (y - HZ) * .25);
+  g.fillStyle = `rgba(255,${200 + rnd() * 40 | 0},150,${0.08 + rnd() * 0.35 * (1 - (y - HZ) / (H - HZ))})`;
+  g.fillRect(x - w / 2, y, w, 1.5 + rnd() * 1.5);
+}
+// vignette + fine grain so the glass has texture to blur
+let v = g.createRadialGradient(W / 2, H * .55, H * .35, W / 2, H * .55, W * .75);
+v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.45)");
+g.fillStyle = v; g.fillRect(0, 0, W, H);
+const d = g.getImageData(0, 0, W, H), a = d.data;
+for (let i = 0; i < a.length; i += 4) { const n = (rnd() - .5) * 7; a[i] += n; a[i + 1] += n; a[i + 2] += n; }
+g.putImageData(d, 0, 0);
+document.title = "done";
+</script></body></html>

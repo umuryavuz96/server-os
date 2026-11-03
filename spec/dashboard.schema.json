@@ -64,7 +64,15 @@
             "bots",
             "logs",
             "claude",
-            "text"
+            "text",
+            "entity",
+            "toggle",
+            "climate",
+            "camera",
+            "media",
+            "history",
+            "button",
+            "group"
           ]
         },
         "title": {
@@ -94,7 +102,7 @@
         },
         "design": {
           "type": "string",
-          "description": "Variant per type \u2014 metric: hero | line | area; stat: tile | big; gauge: ring | bar; apps: list | grid; jobs: list | timeline; bots: list; logs: stream; claude: usage | jobs; text: plain | note."
+          "description": "Variant per type \u2014 metric: hero | line | area; stat: tile | big; gauge: ring | bar; apps: list | grid; jobs: list | timeline; bots: list; logs: stream; claude: usage | jobs; text: plain | note. Home Assistant cards (query.entity): entity: tile | big; toggle: tile | row; climate, camera, media, history, button, group: default."
         },
         "query": {
           "$ref": "#/$defs/query"
@@ -109,7 +117,7 @@
     },
     "query": {
       "type": "object",
-      "description": "What the card shows. metric/bar: metric + range (+ points); stat/gauge: metric (current value) or value (a state path); apps/jobs/bots/logs: filter + sort + limit.",
+      "description": "What the card shows. metric/bar: metric + range (+ points); stat/gauge: metric (current value) or value (a state path); apps/jobs/bots/logs: filter + sort + limit. Home Assistant cards: entity (one entity id) or, for group, entities (the children); history also takes range (1h-30d) and points.",
       "properties": {
         "metric": {
           "enum": [
@@ -167,6 +175,20 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 50
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z_]+\\.[a-z0-9_]+$",
+          "description": "Home Assistant entity id, e.g. light.living_room. entity/toggle/climate/camera/media/history/button cards."
+        },
+        "entities": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+\\.[a-z0-9_]+$"
+          },
+          "description": "group cards: the Home Assistant entities the card opens."
         }
       },
       "additionalProperties": false

@@ -21,7 +21,7 @@ export const lamps = computed<Lamp[]>(() => {
     const down = appList.value.filter((a) => { const u = uptimeFor(a.name); return u && u.pct != null && !u.up && a.state !== "off"; });
     L.push({ id: "APPS", level: down.length ? "r" : "g", text: down.length ? "Monitor says down: " + down.map((a) => a.name).join(", ") + "." : `${appList.value.filter((a) => a.state !== "off" && a.kind !== "lock").length} apps running, none reported down.` });
   }
-  if (S.ha) L.push({ id: "HOME", level: S.ha.online ? "g" : "r", text: S.ha.online ? `Home Assistant online · ${S.ha.peopleHome}/${S.ha.people} home · ${S.ha.lightsOn}/${S.ha.lights} lights on.` : "Home Assistant is not answering (192.168.1.81)." });
+  if (S.ha) L.push({ id: "HOME", level: S.ha.online ? "g" : "r", text: S.ha.online ? `Home Assistant online · ${S.ha.peopleHome}/${S.ha.people} home · ${S.ha.lightsOn}/${S.ha.lights} lights on.` : "Home Assistant is not answering." });
   if (S.dns) { const a = S.dns.adguard; L.push({ id: "DNS", level: a ? "g" : "r", text: a ? `${a.queries.toLocaleString("en-US")} queries today from ${a.clients} devices · ${S.dns.unboundHitRate}% cache hits.` : "AdGuard stats not answering." }); }
   if (sp) L.push({ id: "NET", level: sp.down < 300 || Date.now() / 1000 - sp.t > 10800 ? "a" : "g", text: `${sp.down} down / ${sp.up} up Mb/s, ${sp.ping} ms — tested ${ago(sp.t)}.` });
   if (S.bots) {

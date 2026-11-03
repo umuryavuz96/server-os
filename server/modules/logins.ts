@@ -40,13 +40,13 @@ const linksFile = () => join(dir("data"), "app-logins.json");
 const readLinks = (): Record<string, Link> => { try { return JSON.parse(readFileSync(linksFile(), "utf8")); } catch { return {}; } };
 
 /** Words that name an app: "AdGuard Home" + container "adguard" → adguard, home. A name of short words also counts
- *  run together ("Ege Log" → egelog), so EGE_LOG_PASSWORD still finds it. */
+ *  run together ("Mail Log" → maillog), so MAIL_LOG_PASSWORD still finds it. */
 export function tokens(name: string, docker: string[] = []) {
   const joined = [name, ...docker].map((s) => s.toLowerCase().replace(/[^a-z0-9]/g, "")).filter((t) => t.length >= 4);
   return [...new Set([...[name, ...docker].flatMap((s) => s.toLowerCase().split(/[^a-z0-9]+/)), ...joined]
     .filter((t) => t.length >= 4 && !["home", "server", "the", "panel", "admin", "app"].includes(t)))];
 }
-/** QBIT_PASSWORD belongs to qbittorrent: the variable's first word (or its first two run together, EGE_LOG → egelog)
+/** QBIT_PASSWORD belongs to qbittorrent: the variable's first word (or its first two run together, MAIL_LOG → maillog)
  *  and an app word start the same way (4+ letters). */
 export function matches(key: string, words: string[]) {
   const parts = key.replace(PASS_SUFFIX, "").toLowerCase().split("_");

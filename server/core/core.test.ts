@@ -34,7 +34,7 @@ describe("pairing", () => {
   test("code → token → verify → revoke", () => {
     const { code } = dev.startPairing();
     expect(code).toMatch(/^\d{6}$/);
-    const r = dev.completePairing(code, "Umur's iPad", "ipados");
+    const r = dev.completePairing(code, "Alex's iPad", "ipados");
     if (!r.ok) throw new Error(r.error);
     expect(dev.verify(r.token)?.id).toBe(r.device.id);
     expect(dev.completePairing(code, "x", "y").ok).toBe(false); // single use
@@ -169,14 +169,14 @@ describe("owner account", async () => {
     expect(t).toMatch(/^[A-Za-z0-9_-]{20,}$/);
     expect(owner.setupToken()).toBe(t); // stable
     expect(await owner.createOwner("u", "short")).toContain("Username");
-    expect(await owner.createOwner("umur", "short")).toContain("10 characters");
-    expect(await owner.createOwner("umur", "correct horse battery")).toBeNull();
+    expect(await owner.createOwner("alex", "short")).toContain("10 characters");
+    expect(await owner.createOwner("alex", "correct horse battery")).toBeNull();
     expect(owner.setupToken()).toBeNull();
     expect(await owner.createOwner("other", "correct horse battery")).toContain("already");
   });
   test("verify: right password + case-insensitive name; wrong ones fail", async () => {
-    expect(await owner.verifyOwner("Umur", "correct horse battery")).toBe(true);
-    expect(await owner.verifyOwner("umur", "wrong password!!")).toBe(false);
+    expect(await owner.verifyOwner("Alex", "correct horse battery")).toBe(true);
+    expect(await owner.verifyOwner("alex", "wrong password!!")).toBe(false);
     expect(await owner.verifyOwner("someone", "correct horse battery")).toBe(false);
   });
   test("5 failures in 15 minutes lock that address", () => {
@@ -189,6 +189,6 @@ describe("owner account", async () => {
   test("change password", async () => {
     expect(await owner.changePassword("nope nope nope", "another long one")).toContain("wrong");
     expect(await owner.changePassword("correct horse battery", "another long one")).toBeNull();
-    expect(await owner.verifyOwner("umur", "another long one")).toBe(true);
+    expect(await owner.verifyOwner("alex", "another long one")).toBe(true);
   });
 });

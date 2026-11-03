@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Open-source voices worth trying (voiceCatalog.json via /voice/showcase), folded away under the Voice page. Nothing here
-// installs by a button yet: open the demo to listen, and ask Lahmacun to install one. Loaded the first time it is opened.
+// installs by a button yet: open the demo to listen, and ask the assistant to install one. Loaded the first time it is opened.
 import { ref } from "vue";
+withDefaults(defineProps<{ name?: string }>(), { name: "the assistant" });
 import { api, toast } from "../../store";
 
 type Entry = { id: string; name: string; kind: string; languages: string; turkish: string; cloning: boolean; license: string; size: string; repo: string; demo: string; note: string; installed: boolean };
@@ -22,7 +23,7 @@ const TR: Record<string, string> = { yes: "Turkish: yes", no: "No Turkish", comm
 <template>
   <details class="card vcat" @toggle="opened">
     <summary><b>More voices to try</b><span class="meta">Open-source models, not installed yet</span></summary>
-    <p class="meta vcat-sub">Open a demo to listen, and ask Lahmacun to install one. Licences and languages are from each model card.</p>
+    <p class="meta vcat-sub">Open a demo to listen, and ask {{ name }} to install one. Licences and languages are from each model card.</p>
     <p v-if="catalog && !catalog.length" class="meta">The catalog is empty.</p>
     <ul v-else class="vcat-list">
       <li v-for="e in catalog ?? []" :key="e.id" class="vcat-c">
@@ -37,7 +38,7 @@ const TR: Record<string, string> = { yes: "Turkish: yes", no: "No Turkish", comm
         <div class="vcat-links">
           <a :href="e.repo" target="_blank" rel="noopener noreferrer">Repo / model card</a>
           <a :href="e.demo" target="_blank" rel="noopener noreferrer">Demo &amp; samples</a>
-          <button v-if="!e.installed" type="button" @click="copyAsk(e)">{{ copied === e.id ? "Copied. Paste it to Lahmacun" : "Ask Lahmacun to install" }}</button>
+          <button v-if="!e.installed" type="button" @click="copyAsk(e)">{{ copied === e.id ? `Copied. Paste it to ${name}` : `Ask ${name} to install` }}</button>
         </div>
       </li>
     </ul>

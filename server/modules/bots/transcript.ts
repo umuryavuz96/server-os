@@ -13,7 +13,19 @@ export interface FeedItem {
   id: string; kind: "user" | "assistant" | "step" | "event"; ts: number;
   text?: string; via?: Via; from?: string; nonce?: string;
   tool?: string; title?: string; detail?: string; status?: "running" | "ok" | "error"; ms?: number; out?: string;
+  /** WebSearch / WebFetch steps: the pages found or read (the voice chat shows them as source cards). */
+  sources?: WebSource[]; summary?: string;
+  /** Raw facts for the agent chat (see steps.ts, which turns them into verb/target/res): Edit/Write line counts, a one-line result, agmsg traffic. */
+  add?: number; del?: number; res?: string;
+  /** Added by steps.ts for the agent chat: "Read", "Edited", "Ran"… and a short, secret-free target. */
+  verb?: string; target?: string;
+  agmsg?: { dir: "out" | "in"; team: string; peer: string };
+  /** A thinking summary (only when the reader asked for it with keepThinking). */
+  thinking?: boolean;
 }
+/** One line of the agent's own task list (TodoWrite, or TaskCreate / TaskUpdate). */
+export interface TaskItem { id: string; text: string; active?: string; status: "pending" | "in_progress" | "done" }
+export interface WebSource { title: string; url: string; domain: string; snippet?: string; error?: string }
 export interface BgJob {
   id: string; taskId: string | null; kind: "monitor" | "shell" | "agent"; name: string; command: string;
   started: number; ended: number | null; endReason: string | null; events: number; lastEvent: string | null; lastEventAt: number | null;
@@ -27,6 +39,8 @@ export interface SessionMeta {
 
 const MAX_TEXT = 20_000;
 const INTERRUPT_RE = /^\s*\[Request interrupted/;
+/** API stop reasons that end a turn (tool_use, pause_turn and max_tokens carry on). */
+const TURN_END = new Set(["end_turn", "stop_sequence", "refusal"]);
 const REQ_RE = /\bsd-[0-9a-f]{4,8}\b/;
 const FAIL_RE = /SD-FAILED\s+(sd-[0-9a-f]{4,8})\s*:?\s*([^\n]*)/;
 const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
@@ -42,6 +56,16 @@ export function toolName(name: string) {
   if (server === "claude-in-chrome") server = "Chrome";
   if (server === "telegram") server = "Telegram";
   return `${server} · ${m[2].replace(/_mcp$/, "")}`;
+}
+
+export const AGMSG_SEND = /agmsg\/scripts\/send\.sh\s+(\S+)\s+(\S+)\s+(\S+)/;
+const unq = (s: string) => s.replace(/^["'$]+|["']+$/g, "");
+const lines = (s: string) => (s ? s.split("\n").length : 0);
+/** "358 pass, 2 fail" from a command's full output; "failed" when it errored without a count. */
+export function resultLine(text: string, isError: boolean): string | undefined {
+  const pass = text.match(/(\d+)\s+pass(?:ed)?\b/i)?.[1], fail = text.match(/(\d+)\s+fail(?:ed|ures?)?\b/i)?.[1];
+  if (pass || fail) return [pass && `${pass} pass`, fail && fail !== "0" && `${fail} fail`].filter(Boolean).join(", ");
+  return isError ? "failed" : undefined;
 }
 
 /** One-line title + detail for a tool call. */
@@ -72,6 +96,29 @@ export function describeStep(name: string, input: Record<string, unknown>): { ti
   return { title: t, detail: desc || (first ? `${first[0]}: ${first[1]}` : "") };
 }
 
+const domainOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
+/** The pages a web tool step found or read, from its result text. WebSearch writes "Links: [{title,url},…]" and then
+ *  its summary; WebFetch answers about one URL (its detail), or says "The server returned HTTP 403…" when it failed. */
+export function webSources(tool: string, detail: string, text: string): { sources: WebSource[]; summary?: string } | null {
+  if (tool === "WebSearch") {
+    const m = text.match(/^Links:\s*(\[.*\])\s*$/m);
+    let links: { title?: unknown; url?: unknown }[] = [];
+    try { links = m ? JSON.parse(m[1]) : []; } catch { links = []; }
+    const seen = new Set<string>();
+    const sources = links.filter((l) => typeof l?.url === "string" && /^https?:\/\//.test(l.url as string) && !seen.has(l.url as string) && seen.add(l.url as string))
+      .slice(0, 12).map((l) => ({ title: clip(String(l.title ?? "").trim() || domainOf(String(l.url)), 160), url: String(l.url), domain: domainOf(String(l.url)) }));
+    const rest = m ? text.slice(text.indexOf(m[0]) + m[0].length) : text.replace(/^Web search results for query:[^\n]*\n/, "");
+    const summary = rest.replace(/\n*REMINDER:[\s\S]*$/, "").trim();
+    return sources.length || summary ? { sources, ...(summary ? { summary: clip(summary, 600) } : {}) } : null;
+  }
+  if (tool === "WebFetch" && /^https?:\/\//.test(detail)) {
+    const failed = text.match(/^The server returned HTTP (\d+)[^\n]*/)?.[0];
+    const first = text.replace(/[#*_`>]/g, "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+    return { sources: [{ title: domainOf(detail), url: detail, domain: domainOf(detail), ...(failed ? { error: failed } : first ? { snippet: clip(first, 220) } : {}) }] };
+  }
+  return null;
+}
+
 function contentText(c: unknown): string {
   if (typeof c === "string") return c;
   if (Array.isArray(c)) return c.map((b) => (b && typeof b === "object" && (b as { type?: string }).type === "text" ? String((b as { text?: unknown }).text ?? "") : "")).join("\n");
@@ -81,12 +128,19 @@ function contentText(c: unknown): string {
 export class Transcript {
   items: FeedItem[] = [];
   private index = new Map<string, number>();
+  /** The agent's current task list: the latest TodoWrite wins, TaskCreate / TaskUpdate edit it in place. */
+  tasks: TaskItem[] = [];
   jobs = new Map<string, BgJob>();
   schedules = new Map<string, Schedule>();
   failures = new Map<string, string>(); // request id → bot's reason
   meta: SessionMeta;
   private offset = 0;
   private rest = "";
+  private skipPartial = false;
+  /** A subagent's own log is all sidechain lines: read them instead of skipping them. */
+  keepSidechain = false;
+  /** Also emit the model's thinking summaries as assistant items flagged `thinking` (off for bots and voice). */
+  keepThinking = false;
   private stepAt = new Map<string, number>();
   private taskToJob = new Map<string, string>();
   private changed = new Set<string>();
@@ -95,8 +149,10 @@ export class Transcript {
   private claimDash: (text: string, ts: number) => { nonce: string | null } | null;
 
   /** `claimDash`: is this user line a prompt that was typed in Server OS? (see dashsent.ts) */
-  constructor(public path: string, claimDash: (text: string, ts: number) => { nonce: string | null } | null = () => null) {
+  /** `tail`: read only the last `tail` bytes on the first update (huge sessions: the agent network only needs the recent part). */
+  constructor(public path: string, claimDash: (text: string, ts: number) => { nonce: string | null } | null = () => null, tail = 0) {
     this.claimDash = claimDash;
+    if (tail > 0) { try { const size = statSync(path).size; if (size > tail) { this.offset = size - tail; this.skipPartial = true; } } catch { /* missing: read from 0 */ } }
     this.meta = { session: path.split("/").pop()!.replace(/\.jsonl$/, ""), model: null, contextTokens: 0, contextLimit: 200_000, permissionMode: null, working: null, lastActivity: 0, effort: null };
   }
 
@@ -104,7 +160,7 @@ export class Transcript {
   update(): string[] {
     let size = 0;
     try { size = statSync(this.path).size; } catch { return []; }
-    if (size < this.offset) { this.offset = 0; this.rest = ""; } // rewritten: start over
+    if (size < this.offset) { this.offset = 0; this.rest = ""; this.skipPartial = false; } // rewritten: start over
     if (size === this.offset) return this.flush();
     const fd = openSync(this.path, "r");
     const buf = Buffer.alloc(size - this.offset);
@@ -113,6 +169,7 @@ export class Transcript {
     const text = this.rest + buf.toString("utf8");
     const lines = text.split("\n");
     this.rest = lines.pop() ?? "";
+    if (this.skipPartial) { lines.shift(); this.skipPartial = false; } // started mid-line
     for (const l of lines) if (l.trim()) this.line(l);
     return this.flush();
   }
@@ -174,11 +231,15 @@ export class Transcript {
     const type = o.type as string;
     if (type === "permission-mode") { this.meta.permissionMode = String(o.permissionMode ?? ""); return; }
     if (type === "system" && o.subtype === "turn_duration") { this.meta.working = null; return; }
+    // turn_duration is not a reliable "turn over": Claude Code holds it back while agent-team teammates (and similar
+    // background work) are alive, sometimes for hours, so a session that runs a team showed "Working" after every
+    // answer. The Stop hooks run (stop_hook_summary) each time the main loop stops, so that line ends the turn too.
+    if (type === "system" && o.subtype === "stop_hook_summary") { if (!o.isSidechain) this.meta.working = null; return; }
     // Compaction (manual or idle) writes a boundary and a summary "user" line but no turn_duration, so it ends any turn
     // and must not start one: an idle compaction otherwise shows the bot as working for hours.
     if (type === "system" && o.subtype === "compact_boundary") { this.meta.working = null; this.put({ id: String(o.uuid ?? ts), kind: "event", ts, text: "Compacted" }); return; }
     if (o.isCompactSummary) return;
-    if (o.isSidechain) return;
+    if (o.isSidechain && !this.keepSidechain) return;
     // A message that arrived mid-turn (Telegram, a background notice) is stored as a queued_command attachment.
     if (type === "attachment") {
       const a = (o.attachment ?? {}) as { type?: string; prompt?: unknown };
@@ -194,7 +255,13 @@ export class Transcript {
     const m = (o.message ?? {}) as { role?: string; content?: unknown; model?: string; usage?: Record<string, number> };
     const uuid = String(o.uuid ?? `${ts}-${this.items.length}`);
     if (ts) this.meta.lastActivity = Math.max(this.meta.lastActivity, ts);
-    if (type === "assistant") return this.assistant(m, uuid, ts);
+    if (type === "assistant") {
+      this.assistant(m, uuid, ts);
+      // The model's own "I'm done" (no Stop hooks configured writes no stop_hook_summary). A Stop hook that blocks makes
+      // the turn go on; its next tool step sets "working" again.
+      if (TURN_END.has(String((m as { stop_reason?: unknown }).stop_reason ?? ""))) this.meta.working = null;
+      return;
+    }
     this.user(m.content, uuid, ts);
   }
 
@@ -212,6 +279,9 @@ export class Transcript {
         if (!text || text === "No response requested.") return;
         this.put({ id: `${uuid}:${k}`, kind: "assistant", ts, text: clip(text, MAX_TEXT), via: "terminal" });
         this.scanFailure(text);
+      } else if (b.type === "thinking" && this.keepThinking) {
+        const text = String(b.thinking ?? "").trim();
+        if (text) this.put({ id: `${uuid}:${k}`, kind: "assistant", ts, text: clip(text, 2000), via: "terminal", thinking: true });
       } else if (b.type === "tool_use") this.toolUse(b, ts);
     });
   }
@@ -219,9 +289,14 @@ export class Transcript {
   private toolUse(b: Record<string, unknown>, ts: number) {
     const id = String(b.id), name = String(b.name), input = (b.input ?? {}) as Record<string, unknown>;
     const { title, detail } = describeStep(name, input);
-    this.put({ id, kind: "step", ts, tool: toolName(name), title, detail: clip(detail, 400), status: "running" });
+    const sent = name === "Bash" && typeof input.command === "string" ? input.command.match(AGMSG_SEND) : null;
+    const str0 = (k: string) => (typeof input[k] === "string" ? (input[k] as string) : "");
+    const counts = name === "Edit" ? { add: lines(str0("new_string")), del: lines(str0("old_string")) } : name === "Write" ? { add: lines(str0("content")), del: 0 } : {};
+    this.put({ id, kind: "step", ts, tool: toolName(name), title, detail: clip(detail, 400), status: "running", ...counts,
+      ...(sent ? { agmsg: { dir: "out" as const, team: unq(sent[1]), peer: unq(sent[3]) } } : {}) });
     this.stepAt.set(id, ts);
     this.meta.working = { since: this.meta.working?.since ?? ts, step: title };
+    this.taskTool(id, name, input);
     const raw = JSON.stringify(input);
     const request = raw.match(REQ_RE)?.[0] ?? null;
     if (/telegram/i.test(name) && name.endsWith("reply") && typeof input.text === "string") {
@@ -241,6 +316,22 @@ export class Transcript {
     else if (name === "TaskStop") this.endTask(str("task_id") || str("shell_id"), ts, "stopped");
     else if (name === "CronCreate") this.schedules.set(id, { id, cronId: null, cron: str("cron"), prompt: str("prompt"), recurring: input.recurring !== false, created: ts, deleted: false, request });
     else if (name === "CronDelete") { for (const s of this.schedules.values()) if (s.cronId === str("id")) s.deleted = true; }
+  }
+
+  private taskTool(useId: string, name: string, input: Record<string, unknown>) {
+    const st = (v: unknown): TaskItem["status"] => (v === "completed" || v === "done" ? "done" : v === "in_progress" ? "in_progress" : "pending");
+    const txt = (v: unknown) => (typeof v === "string" ? clip(v.trim(), 200) : "");
+    if (name === "TodoWrite" && Array.isArray(input.todos)) {
+      this.tasks = (input.todos as Record<string, unknown>[]).map((t, i) => ({ id: String(i + 1), text: txt(t.content) || txt(t.subject), active: txt(t.activeForm) || undefined, status: st(t.status) })).filter((t) => t.text);
+    } else if (name === "TaskCreate" && txt(input.subject)) {
+      this.tasks.push({ id: `new:${useId}`, text: txt(input.subject), active: txt(input.activeForm) || undefined, status: "pending" });
+    } else if (name === "TaskUpdate") {
+      const i = this.tasks.findIndex((t) => t.id === String(input.taskId ?? ""));
+      if (i < 0) return;
+      if (input.status === "deleted") { this.tasks.splice(i, 1); return; }
+      const t = this.tasks[i];
+      this.tasks[i] = { ...t, ...(input.status ? { status: st(input.status) } : {}), ...(txt(input.subject) ? { text: txt(input.subject) } : {}), ...(txt(input.activeForm) ? { active: txt(input.activeForm) } : {}) };
+    }
   }
 
   private isInterrupt(content: unknown) {
@@ -306,7 +397,8 @@ export class Transcript {
       if (status && /completed|failed|killed|stopped/.test(status)) { job.ended = job.ended ?? ts; job.endReason = job.endReason ?? status; }
     }
     const what = event ? `${summary.replace(/^Monitor event:\s*/, "")} · ${clip(strip(event).replace(/\s+/g, " "), 200)}` : summary || "Background job update";
-    this.put({ id: uuid, kind: "event", ts, text: what });
+    const am = event ? strip(event).match(/^\S+\s+\|\s+(\S+)\s+\|\s+(\S+)\s+→\s+(\S+)\s+\|/) : null;
+    this.put({ id: uuid, kind: "event", ts, text: what, ...(am ? { agmsg: { dir: "in" as const, team: am[1], peer: am[2] } } : {}) });
   }
 
   private toolResult(b: Record<string, unknown>, ts: number) {
@@ -315,7 +407,15 @@ export class Transcript {
     const text = strip(contentText(b.content));
     if (step) {
       const t0 = this.stepAt.get(id) ?? ts;
-      this.put({ ...step, status: b.is_error ? "error" : "ok", ms: Math.max(0, ts - t0), out: clip(text.trim(), 600) });
+      const web = step.tool === "WebSearch" || step.tool === "WebFetch" ? webSources(step.tool, step.detail ?? "", text) : null;
+      const res = step.tool === "Shell" ? resultLine(text, !!b.is_error)
+        : step.tool === "Grep" || step.tool === "Glob" ? (text.trim() && !b.is_error ? `${lines(text.trim())} ${step.tool === "Glob" ? "files" : "matches"}` : b.is_error ? "failed" : "none") : undefined;
+      this.put({ ...step, status: b.is_error ? "error" : "ok", ms: Math.max(0, ts - t0), out: clip(text.trim(), 600), ...(web ?? {}), ...(res ? { res } : {}) });
+    }
+    const nt = this.tasks.findIndex((t) => t.id === `new:${id}`);
+    if (nt >= 0) { // TaskCreate answered: "Task #3 created successfully: …" gives the id TaskUpdate will use
+      const n = text.match(/#(\d+)/)?.[1];
+      if (b.is_error) this.tasks.splice(nt, 1); else this.tasks[nt] = { ...this.tasks[nt], id: n ?? String(this.tasks.filter((t) => !t.id.startsWith("new:")).length + 1) };
     }
     const job = this.jobs.get(id);
     if (job) {

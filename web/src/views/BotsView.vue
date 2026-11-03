@@ -7,6 +7,7 @@ import { ref, computed, watch, onUnmounted, nextTick } from "vue";
 import { S, api, post, toast, type BotSession } from "../store";
 import { useFeed, modelLabel, newNonce, type FeedItem, blocks as toBlocks } from "../bots";
 import BotFeed from "../components/bots/BotFeed.vue";
+import BotApprovals from "../components/bots/BotApprovals.vue";
 import BotInspector from "../components/bots/BotInspector.vue";
 import NewJob from "../components/bots/NewJob.vue";
 import BotWorkspace from "../components/bots/BotWorkspace.vue";
@@ -180,6 +181,7 @@ const newJob = ref(false);
         <button v-for="b in bots" :key="b.channel" type="button" class="bws-b" :aria-current="!creating && bot?.channel === b.channel ? 'true' : undefined" @click="pick(b.channel)">
           <span class="dot" :class="!b.running ? '' : working(b) ? 'work' : 'on'"></span>
           <span class="bws-bt"><b>{{ label(b.channel) }}</b><small>{{ line(b) }}</small></span>
+          <span v-if="S.botApprovals?.[b.channel]" class="apv-bdg" :title="`${S.botApprovals[b.channel]} waiting for your OK`">OK? {{ S.botApprovals[b.channel] }}</span>
         </button>
         <p class="bws-lf">{{ bots.filter((b) => b.running).length }} of {{ bots.length }} running</p>
       </nav>
@@ -230,12 +232,13 @@ const newJob = ref(false);
           <div v-if="tabs.length > 1" class="seg2 bws-tabs" role="tablist" aria-label="View">
             <button v-for="t in tabs" :key="t" type="button" role="tab" :aria-selected="tab === t" @click="tab = t; past = null">{{ t[0].toUpperCase() + t.slice(1) }}</button>
           </div>
-          <button type="button" class="btn sm bws-panel" aria-haspopup="dialog" @click="info = true">Info</button>
+          <button type="button" class="btn sm bws-panel" aria-haspopup="dialog" @click="info = true">Info<span v-if="meta?.approvals?.length" class="apv-bdg">{{ meta.approvals.length }}</span></button>
         </header>
 
         <BotWorkspace v-if="tab === 'workspace' && bot.provider === 'native'" :bot="bot" />
         <template v-else-if="bot.running">
           <template v-if="tab === 'chat'">
+            <BotApprovals class="apv-chat" :channel="bot.channel" :items="meta?.approvals ?? []" />
             <BotFeed :blocks="grouped" :meta="meta" :name="bot.channel" :can-interrupt="!!meta?.tmux" :stop="stop" @interrupt="interrupt" @retry="retry" @dismiss="dismiss" />
             <form class="bws-send" @submit.prevent="send">
               <div class="bws-box">

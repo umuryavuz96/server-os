@@ -9,7 +9,8 @@ import { dir } from "../core/config";
 import { db, schema } from "../core/db";
 import { logEvent, newTrace, type Trace } from "../core/logger";
 import { HOME } from "../lib";
-import { humanSchedule, nextRun, prevRun } from "../ops";
+import { humanSchedule, nextRun, prevRun, cardFields } from "../ops";
+import { parseTouches, parseUses, RISKS, type Risk, type Touches, type Uses } from "../jobCard";
 
 export type JobKind = "command" | "claude" | "http";
 export interface JobSpec {
@@ -29,6 +30,10 @@ export interface JobSpec {
   webhook?: boolean;
   about?: string;
   category?: string;
+  /** ID card (see jobCard.ts): what it touches, what it uses, how risky it is. New jobs must have all of about/touches/uses/risk. */
+  touches?: Touches;
+  uses?: Uses;
+  risk?: Risk;
 }
 export interface Run {
   id: number; job: string; trigger: string; actor: string; started: number; ended: number | null;
@@ -86,8 +91,12 @@ export function validate(spec: Partial<JobSpec>): string | null {
   return null;
 }
 
-const KEYS: (keyof JobSpec)[] = ["name", "kind", "schedule", "command", "prompt", "allowedTools", "url", "expect", "cwd", "timeout", "enabled", "webhook", "about", "category"];
-const clean = (spec: Partial<JobSpec>) => Object.fromEntries(KEYS.filter((k) => spec[k] !== undefined && spec[k] !== "").map((k) => [k, spec[k]])) as unknown as JobSpec;
+const KEYS: (keyof JobSpec)[] = ["name", "kind", "schedule", "command", "prompt", "allowedTools", "url", "expect", "cwd", "timeout", "enabled", "webhook", "about", "category", "touches", "uses", "risk"];
+const clean = (spec: Partial<JobSpec>) => {
+  const c = Object.fromEntries(KEYS.filter((k) => spec[k] !== undefined && spec[k] !== "").map((k) => [k, spec[k]])) as Record<string, unknown>;
+  c.touches = parseTouches(c.touches); c.uses = parseUses(c.uses); if (!RISKS.includes(c.risk as Risk)) c.risk = undefined;
+  return Object.fromEntries(Object.entries(c).filter(([, v]) => v !== undefined)) as unknown as JobSpec;
+};
 
 export function listSpecs(): { id: string; spec: JobSpec; error?: string }[] {
   if (!existsSync(jobsDir())) return [];
@@ -231,7 +240,7 @@ export function serverJobs() {
       status, lastRun: last ? Math.floor(last.started / 1000) : null,
       cause: error ?? (last && !last.ok ? last.output.split("\n").filter(Boolean).at(-1)?.slice(0, 200) ?? "" : ""),
       log: null, command: spec.kind === "command" ? spec.command! : spec.kind === "claude" ? `claude -p "${spec.prompt}"` : `GET ${spec.url}`,
-      category: spec.category ?? null, about: spec.about ?? null, reports: null, project: null,
+      ...cardFields(spec),
       runs: runs.filter((r) => r.ok != null).map((r) => ({ t: Math.floor(r.started / 1000), ok: !!r.ok })),
       source: "server" as const, kind: spec.kind, webhook: !!spec.webhook,
     };

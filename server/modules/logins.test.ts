@@ -8,11 +8,11 @@ describe("which ~/.env passwords belong to an app", () => {
     expect(matches("ADGUARD_PASSWORD", tokens("AdGuard Home", ["adguard"]))).toBe(true);
   });
   test("an app of short words matches its words run together", () => {
-    expect(tokens("Ege Log")).toContain("egelog");
-    expect(matches("EGE_LOG_PASSWORD", tokens("Ege Log"))).toBe(true);
+    expect(tokens("Mail Log")).toContain("maillog");
+    expect(matches("MAIL_LOG_PASSWORD", tokens("Mail Log"))).toBe(true);
   });
   test("other apps' passwords don't match", () => {
-    expect(matches("JELLYFIN_ADMIN_PASSWORD", tokens("Ege Log"))).toBe(false);
+    expect(matches("JELLYFIN_ADMIN_PASSWORD", tokens("Mail Log"))).toBe(false);
     expect(matches("SUDO_PASSWORD", tokens("Uptime Kuma"))).toBe(false);
     expect(matches("M2_PASSWORD", tokens("Minecraft Server"))).toBe(false);
   });

@@ -8,7 +8,8 @@
     "start": "bun run server/index.ts",
     "test": "bun test server",
     "typecheck": "vue-tsc --noEmit -p web/tsconfig.json && tsc --noEmit -p server/tsconfig.json",
-    "cli": "bun run server/cli.ts"
+    "cli": "bun run server/cli.ts",
+    "house:render": "bun run tools/house-render/render.ts"
   },
   "dependencies": {
     "@novnc/novnc": "1.7.0",
@@ -18,11 +19,13 @@
     "hono": "4",
     "lucide-vue-next": "^1.0.0",
     "marked": "15",
-    "qrcode": "1"
+    "qrcode": "1",
+    "three": "0.170.0"
   },
   "devDependencies": {
     "@types/bun": "^1.4.3",
     "@types/qrcode": "^1.5.6",
+    "@types/three": "0.170.0",
     "@vitejs/plugin-vue": "5",
     "typescript": "5",
     "vite": "6",

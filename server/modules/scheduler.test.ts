@@ -79,3 +79,18 @@ describe("jobs", () => {
     expect(s.saveSpec("Bad Id", { name: "x", kind: "command", command: "true" }).ok).toBe(false);
   });
 });
+
+describe("ID card", () => {
+  test("card fields survive save and show up on the job; bad risk and non-name secrets are dropped", () => {
+    const r = s.saveSpec("card-test", { name: "card test", kind: "command", command: "true", about: "Does a thing. For a reason.", touches: { apps: ["Docker"] as string[], paths: ["/tmp/x"] as string[], data: "none" }, uses: { tools: ["sh"], secrets: ["API_KEY", "not a name"] } as never, risk: "bogus" as never });
+    expect(r.ok).toBe(true);
+    const j = s.serverJobs().find((x) => x.id === "sd:card-test")!;
+    expect(j.uses?.secrets).toEqual(["API_KEY"]);
+    expect(j.risk).toBeNull();
+    expect(j.card).toBe("missing");
+    expect(j.gaps).toEqual(["risk"]);
+    s.saveSpec("card-test", { ...s.getSpec("card-test")!.spec, risk: "writes" });
+    expect(s.serverJobs().find((x) => x.id === "sd:card-test")!.card).toBe("ok");
+    s.deleteSpec("card-test");
+  });
+});

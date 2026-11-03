@@ -4,6 +4,12 @@
 import { computed, onMounted, ref } from "vue";
 import { S, api, toast, type UpdateStatus } from "../store";
 import UpdateCard from "../components/UpdateCard.vue";
+import { look } from "../desktop/prefs";
+import { canFullscreen, isFull, toggleFullscreen } from "../desktop/fullscreen";
+const LAYOUTS = [
+  ["classic", "Classic", "Sidebar on the left, pages on a dark background."],
+  ["desktop", "Glass desktop", "A wallpaper, a floating dock on the left and glass panels. Press F for full screen."],
+] as const;
 
 onMounted(async () => { try { S.update = await api<UpdateStatus>("/update"); } catch { /* the SSE slice fills it */ } });
 const u = computed(() => S.update ?? null);
@@ -26,6 +32,27 @@ const fmt = (ms: number | null) => (ms ? new Date(ms).toLocaleString(undefined, 
 <template>
   <main class="page">
     <header class="ph"><h1>Settings</h1></header>
+    <section class="card2" aria-labelledby="look-set">
+      <div class="ch"><h3 id="look-set">Appearance</h3><span class="muted">this browser</span></div>
+      <fieldset class="set">
+        <legend>Layout</legend>
+        <div class="opts two" role="radiogroup" aria-label="Layout">
+          <button v-for="[id, label, about] in LAYOUTS" :key="id" type="button" role="radio" class="seg" :aria-checked="look.layout === id" :aria-pressed="look.layout === id" @click="look.layout = id">
+            <b>{{ label }}</b><span>{{ about }}</span>
+          </button>
+        </div>
+      </fieldset>
+      <fieldset v-if="look.layout === 'desktop'" class="set">
+        <legend>Glass</legend>
+        <div class="pills">
+          <button type="button" class="pill2" :aria-pressed="look.solid" :aria-selected="look.solid" @click="look.solid = !look.solid">Reduce transparency</button>
+          <button type="button" class="pill2" :aria-pressed="look.motion" :aria-selected="look.motion" @click="look.motion = !look.motion">Moving wallpaper</button>
+          <button v-for="w in (['room', 'dusk', 'aurora'] as const)" :key="w" type="button" class="pill2" :aria-pressed="look.wallpaper === w" :aria-selected="look.wallpaper === w" @click="look.wallpaper = w">{{ w === "room" ? "Golden room" : w === "dusk" ? "Dusk lake" : "Aurora" }}</button>
+          <button v-if="canFullscreen" type="button" class="pill2" :aria-pressed="isFull" :aria-selected="isFull" @click="toggleFullscreen">Full screen</button>
+        </div>
+        <p class="hint">Solid panels are also used when the system asks for less transparency. Add the page to the home screen (iPhone: Share → Add to Home Screen) to open it without browser bars.</p>
+      </fieldset>
+    </section>
     <p v-if="!u" class="hint">Reading the update status…</p>
     <template v-else>
       <UpdateCard always />
@@ -64,7 +91,8 @@ const fmt = (ms: number | null) => (ms ? new Date(ms).toLocaleString(undefined, 
 .set{border:0;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:8px;min-width:0}
 .set legend{font:700 12px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0;margin-bottom:8px}
 .opts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-@media(max-width:720px){.opts{grid-template-columns:1fr}}
+.opts.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:720px){.opts,.opts.two{grid-template-columns:1fr}}
 .opts .seg b{font-size:15px}
 .opts .seg span{font-size:12.5px;line-height:1.35}
 .opts .seg[aria-pressed="true"]{border-color:var(--ink);background:#18181b}

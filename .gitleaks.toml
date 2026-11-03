@@ -1,0 +1,13 @@
+# Extends gitleaks' default rules. The listed test files hold dummy credentials on purpose.
+title = "server-os gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Dummy credentials in test fixtures"
+paths = [
+  '''server/modules/bots/steps\.test\.ts''',
+  '''server/modules/screen\.api\.test\.ts''',
+  '''server/ops\.test\.ts''',
+]

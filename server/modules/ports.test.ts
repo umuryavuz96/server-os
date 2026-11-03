@@ -50,8 +50,8 @@ describe("ports", () => {
        { port: 8384, proto: "tcp", addresses: ["0.0.0.0"], scope: "network", process: "syncthing", pid: 70 }],
       [{ container: "jellyfin", hostIp: "0.0.0.0", hostPort: 8096, containerPort: 8096, proto: "tcp" }],
       [{ name: "jellyfin.home", port: 8096, file: "f" }, { name: "old.home", port: 9999, file: "f" }],
-      [{ name: "Jellyfin", docker: ["jellyfin"] }, { name: "Ege Log", pids: [50] }]);
-    expect(rep.rows.map((r) => [r.port, r.app, r.names, r.issue])).toEqual([[3043, "Ege Log", [], null], [8096, "Jellyfin", ["jellyfin.home"], null], [8384, null, [], "unknown"]]);
+      [{ name: "Jellyfin", docker: ["jellyfin"] }, { name: "Mail Log", pids: [50] }]);
+    expect(rep.rows.map((r) => [r.port, r.app, r.names, r.issue])).toEqual([[3043, "Mail Log", [], null], [8096, "Jellyfin", ["jellyfin.home"], null], [8384, null, [], "unknown"]]);
     expect(rep.deadNames.map((d) => d.name)).toEqual(["old.home"]);
     expect(rep.counts).toMatchObject({ total: 3, network: 3, docker: 1, issues: 1 });
   });

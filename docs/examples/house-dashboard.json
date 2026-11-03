@@ -1,0 +1,19 @@
+{
+  "title": "House",
+  "description": "Lights, heating, the camera, the Sonos and a temperature history, from Home Assistant. Replace the entity ids with yours (Edit, then pick a card).",
+  "refresh": 60,
+  "cards": [
+    {"id": "salon", "type": "toggle", "x": 0, "y": 0, "w": 3, "h": 2, "design": "tile", "query": {"entity": "light.salon_1"}},
+    {"id": "desk", "type": "toggle", "x": 3, "y": 0, "w": 3, "h": 2, "design": "tile", "query": {"entity": "light.office_desk_lamp"}},
+    {"id": "heat", "type": "climate", "title": "Heating", "x": 6, "y": 0, "w": 3, "h": 3, "query": {"entity": "climate.thermostat_1"}},
+    {"id": "temp", "type": "entity", "title": "Study", "x": 9, "y": 0, "w": 3, "h": 3, "design": "big", "query": {"entity": "sensor.study_temperature"}},
+    {"id": "movie", "type": "button", "title": "Movie mode", "x": 0, "y": 2, "w": 2, "h": 1, "query": {"entity": "scene.movie_mode"}},
+    {"id": "lights-on", "type": "button", "title": "Lights on", "x": 2, "y": 2, "w": 2, "h": 1, "query": {"entity": "scene.salon_lights_on"}},
+    {"id": "lights-off", "type": "button", "title": "Lights off", "x": 4, "y": 2, "w": 2, "h": 1, "query": {"entity": "scene.salon_lights_off"}},
+    {"id": "all-lights", "type": "group", "title": "All lights", "x": 0, "y": 3, "w": 6, "h": 2, "query": {"entities": ["light.salon_1", "light.office_desk_lamp", "light.office_ceeling_lamp", "light.lsc_smart_gu10", "light.yeelight_color4_0x124dbcdb"]}},
+    {"id": "cam", "type": "camera", "x": 0, "y": 5, "w": 5, "h": 4, "query": {"entity": "camera.hall_camera"}},
+    {"id": "sonos", "type": "media", "title": "Sonos Arc", "x": 6, "y": 3, "w": 6, "h": 2, "query": {"entity": "media_player.sonos_arc"}},
+    {"id": "temp-24h", "type": "history", "title": "Study, 24 hours", "x": 5, "y": 5, "w": 7, "h": 4, "query": {"entity": "sensor.study_temperature", "range": "24h", "points": 96}},
+    {"id": "temp-7d", "type": "history", "title": "Study, 7 days", "x": 0, "y": 9, "w": 12, "h": 3, "query": {"entity": "sensor.study_temperature", "range": "7d", "points": 168}}
+  ]
+}

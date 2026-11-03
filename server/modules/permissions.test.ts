@@ -17,7 +17,7 @@ describe("what the config needs", () => {
     expect(def(cfg(), "microphone").needed).toBe(false);
   });
   test("LAN integrations make Local Network required; public URLs do not", () => {
-    expect(def(cfg({}, { homeAssistant: { url: "http://192.168.1.81:8123" } }), "local-network").required).toBe(true);
+    expect(def(cfg({}, { homeAssistant: { url: "http://192.168.1.10:8123" } }), "local-network").required).toBe(true);
     expect(def(cfg({}, { adguard: { url: "http://adguard.home:3080" } }), "local-network").required).toBe(true);
     expect(def(cfg({}, { homeAssistant: { url: "https://ha.example.com" } }), "local-network").required).toBe(false);
     expect(lanTargets(cfg({}, { homeAssistant: { url: "http://10.0.0.5:8123" } }))).toEqual([{ host: "10.0.0.5", port: 8123 }]);
@@ -58,7 +58,7 @@ describe("probes", () => {
     expect(probeFullDiskAccess([join(tmpdir(), "no-such-file-xyz")]).status).toBe("unknown");
   });
   test("local network maps connect results", async () => {
-    const c = cfg({}, { homeAssistant: { url: "http://192.168.1.81:8123" } });
+    const c = cfg({}, { homeAssistant: { url: "http://192.168.1.10:8123" } });
     const run = (r: "connected" | "refused" | "unreachable" | "timeout") => probeLocalNetwork(c, async () => null, async () => r);
     expect((await run("connected")).status).toBe("granted");
     expect((await run("refused")).status).toBe("granted");
@@ -84,7 +84,7 @@ describe("probes", () => {
 describe("listPermissions", () => {
   test("empty on platforms with neither macOS nor Linux permissions", async () => { expect(await listPermissions({ platform: "win32" })).toEqual([]); });
   test("active probes stay unknown until asked; passive ones run", async () => {
-    const c = cfg({}, { homeAssistant: { url: "http://192.168.1.81:8123" } });
+    const c = cfg({}, { homeAssistant: { url: "http://192.168.1.10:8123" } });
     const l = await listPermissions({ platform: "darwin", cfg: c });
     const by = Object.fromEntries(l.map((p) => [p.id, p]));
     expect(by["local-network"].status).toBe("unknown");

@@ -51,7 +51,7 @@ const ticks = computed(() => (dom.value ? [dom.value.hi - (dom.value.hi - dom.va
 </script>
 
 <template>
-  <div class="lc">
+  <div class="lc" :class="{ ax: axis && ticks.length }">
     <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" @pointermove="move" @pointerleave="hover = null">
       <defs><linearGradient :id="`g${$.uid}`" x1="0" x2="0" y1="0" y2="1"><stop offset="0" :stop-color="c" stop-opacity=".22" /><stop offset="1" :stop-color="c" stop-opacity="0" /></linearGradient></defs>
       <template v-for="(idx, k) in segs" :key="k">

@@ -6,11 +6,12 @@ import { api, toast } from "../store";
 interface Spec {
   id?: string; name: string; kind: "command" | "claude" | "http"; schedule: string; command: string; prompt: string;
   url: string; expect: number; timeout: number | null; enabled: boolean; webhook: boolean; about: string; category: string;
+  risk: "" | "read-only" | "writes" | "destructive"; apps: string; paths: string; data: string; tools: string; apis: string; secrets: string; model: string; // ID card; lists are comma-separated here
 }
 const props = defineProps<{ jobId: string | null }>(); // null = new job
 const emit = defineEmits<{ close: []; saved: [id: string] }>();
 
-const blank = (): Spec => ({ name: "", kind: "command", schedule: "", command: "", prompt: "", url: "", expect: 200, timeout: null, enabled: true, webhook: false, about: "", category: "" });
+const blank = (): Spec => ({ name: "", kind: "command", schedule: "", command: "", prompt: "", url: "", expect: 200, timeout: null, enabled: true, webhook: false, about: "", category: "", risk: "", apps: "", paths: "", data: "", tools: "", apis: "", secrets: "", model: "" });
 const f = reactive<Spec>(blank());
 const err = ref(""), busy = ref(false), loaded = ref(false);
 const hook = ref<{ url: string; secret: string; header: string } | null>(null);
@@ -28,6 +29,8 @@ watch(() => props.jobId, async (id) => {
   try {
     const j = await api<Partial<Spec> & { webhook?: boolean }>(`/jobs/${id}`);
     Object.assign(f, blank(), Object.fromEntries(Object.entries(j).filter(([, v]) => v != null)));
+    const t = (j as { touches?: Record<string, string[] | string> }).touches ?? {}, u = (j as { uses?: Record<string, string[] | string> }).uses ?? {};
+    Object.assign(f, { apps: [t.apps ?? []].flat().join(", "), paths: [t.paths ?? []].flat().join(", "), data: t.data ?? "", tools: [u.tools ?? []].flat().join(", "), apis: [u.apis ?? []].flat().join(", "), secrets: [u.secrets ?? []].flat().join(", "), model: u.model ?? "" });
     if (j.webhook) hook.value = await api(`/jobs/${id}/webhook`);
     loaded.value = true;
   } catch (e) { err.value = String((e as Error).message); }
@@ -36,7 +39,8 @@ watch(() => props.jobId, async (id) => {
 async function save() {
   busy.value = true; err.value = "";
   const body: Record<string, unknown> = { name: f.name.trim(), kind: f.kind, schedule: f.schedule.trim() || undefined, enabled: f.enabled, webhook: f.webhook,
-    about: f.about.trim() || undefined, category: f.category.trim() || undefined, timeout: f.timeout || undefined };
+    about: f.about.trim() || undefined, category: f.category.trim() || undefined, timeout: f.timeout || undefined, risk: f.risk || undefined,
+    touches: { apps: f.apps, paths: f.paths, data: f.data }, uses: { tools: f.tools, apis: f.apis, secrets: f.secrets, model: f.model } };
   if (f.kind === "command") body.command = f.command;
   if (f.kind === "claude") body.prompt = f.prompt;
   if (f.kind === "http") { body.url = f.url.trim(); body.expect = Number(f.expect) || 200; }
@@ -80,7 +84,19 @@ const copy = (s: string) => navigator.clipboard?.writeText(s).then(() => toast("
       <label class="fld">Category<input v-model="f.category" placeholder="Backups" /></label>
       <label class="fld">Timeout (s)<input v-model.number="f.timeout" type="number" min="1" max="86400" placeholder="3600" /></label>
     </div>
-    <label class="fld">What it does<input v-model="f.about" placeholder="One line for the job's ID card" /></label>
+    <label class="fld">What it does and why<textarea v-model="f.about" :required="!jobId" placeholder="Two plain sentences for the job's ID card"></textarea></label>
+    <label class="fld">Apps it touches<input v-model="f.apps" :required="!jobId" placeholder="Docker, Caddy, notify bot (comma-separated)" /></label>
+    <label class="fld">Disk paths it writes or deletes<input v-model="f.paths" placeholder="~/backups (about 2 GB), none" /></label>
+    <label class="fld">Data it changes<input v-model="f.data" placeholder="Deletes backups older than 14 days" /></label>
+    <label class="fld">Tools it uses<input v-model="f.tools" :required="!jobId" placeholder="sh, rsync, curl" /></label>
+    <div class="fld-row">
+      <label class="fld">APIs<input v-model="f.apis" placeholder="Telegram Bot API" /></label>
+      <label class="fld">Secrets (variable names only)<input v-model="f.secrets" spellcheck="false" placeholder="TELEGRAM_BOT_TOKEN" /></label>
+    </div>
+    <label class="fld">Model<input v-model="f.model" placeholder="only if an LLM is used" /></label>
+    <label class="fld">Risk
+      <select v-model="f.risk" :required="!jobId"><option value="" disabled>Choose…</option><option value="read-only">Read-only: only looks</option><option value="writes">Writes: creates or changes files, data or messages</option><option value="destructive">Destructive: deletes, overwrites or restarts something</option></select>
+    </label>
     <label class="chk"><input v-model="f.enabled" type="checkbox" /> Enabled (runs on its schedule)</label>
     <label class="chk"><input v-model="f.webhook" type="checkbox" /> Webhook — start it with an HTTP POST</label>
     <div v-if="hook" class="dbox" style="display: flex; flex-direction: column; gap: 6px">

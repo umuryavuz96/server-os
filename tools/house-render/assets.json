@@ -1,0 +1,35 @@
+{
+  "source": "Poly Haven (https://polyhaven.com), every asset CC0 1.0",
+  "textures": {
+    "oak": { "id": "laminate_floor_02", "res": "2k" },
+    "tiles": { "id": "tiled_floor_001", "res": "1k" },
+    "wet": { "id": "floor_tiles_06", "res": "1k" },
+    "brick": { "id": "brown_brick_02", "res": "1k" },
+    "fabric": { "id": "poly_wool_herringbone", "res": "1k" },
+    "rug": { "id": "fabric_pattern_07", "res": "1k", "diffuse": "col_1" },
+    "grass": { "id": "leafy_grass", "res": "1k" },
+    "patio": { "id": "patio_tiles", "res": "1k" },
+    "teddy": { "id": "curly_teddy_natural", "res": "1k" },
+    "linen": { "id": "rough_linen", "res": "1k" },
+    "jersey": { "id": "cotton_jersey", "res": "1k" },
+    "sheer": { "id": "crepe_georgette", "res": "1k" },
+    "plaster": { "id": "plastered_wall_04", "res": "1k" }
+  },
+  "hdri": { "day": { "id": "kloofendal_48d_partly_cloudy_puresky", "res": "1k" } },
+  "models": {
+    "coffee-table": { "id": "modern_coffee_table_01" },
+    "sideboard": { "id": "modern_wooden_cabinet" },
+    "plant-tall": { "id": "potted_plant_02" },
+    "plant-small": { "id": "potted_plant_04" },
+    "plant-ivy": { "id": "potted_plant_01" },
+    "pendant": { "id": "modern_ceiling_lamp_01" },
+    "desk-lamp": { "id": "desk_lamp_arm_01" },
+    "shelves": { "id": "wooden_display_shelves_01" },
+    "pillows": { "id": "throw_pillows_01" },
+    "side-table": { "id": "side_table_01" },
+    "dining-chair": { "id": "dining_chair_02" },
+    "lounge-chair": { "id": "mid_century_lounge_chair" },
+    "frame": { "id": "hanging_picture_frame_01" },
+    "vase": { "id": "ceramic_vase_01" }
+  }
+}

@@ -4,7 +4,8 @@ import { ref, computed, watch } from "vue";
 import AppIcon from "./AppIcon.vue";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import ReadyCard, { type Ready } from "./ReadyCard.vue";
-import { S, api, totalMem, uptimeFor, mb, post, toast, type AppState } from "../store";
+import { S, api, totalMem, uptimeFor, mb, type AppState } from "../store";
+import { switchSteps, toggleApp } from "../composables/appSwitch";
 
 const props = defineProps<{ app: AppState }>();
 // Apps Server OS installed carry a ready card (login + what's left); matched by name.
@@ -28,28 +29,11 @@ const share = computed(() => (props.app.mem > 0 && totalMem.value ? Math.round((
 const up = computed(() => uptimeFor(props.app.name));
 const upTxt = computed(() => (up.value && up.value.pct != null ? (up.value.up ? (up.value.pct >= 99.95 ? "100" : up.value.pct.toFixed(1)) + "%" : "down") : "–"));
 
-// What the switch will actually do, in plain words, for the dialog.
-const steps = computed(() => {
-  const a = props.app, off = isOn.value, out: string[] = [];
-  const parts = Object.keys(a.parts);
-  const ctr = parts.filter((p) => p.startsWith("docker:")).map((p) => p.slice(7));
-  const ld = parts.filter((p) => p.startsWith("launchd:")).map((p) => p.slice(8));
-  if (ctr.length) out.push(`${off ? "Stops" : "Starts"} ${ctr.length === 1 ? "container" : ctr.length + " containers"}: ${ctr.join(", ")}`);
-  if (ld.length) out.push(`${off ? "Unloads" : "Loads"} background service${ld.length > 1 ? "s" : ""}: ${ld.join(", ")}`);
-  if (parts.some((p) => p.startsWith("vm:"))) out.push(off ? "Shuts down the virtual machine" : "Boots the virtual machine (takes a minute)");
-  if (a.kind === "gate") out.push(off ? "Visitors see a “switched off” page instead of the site" : "The site is served again");
-  if (off && a.mem > 0) out.push(`Frees about ${mb(a.mem)} of RAM`);
-  out.push(off ? "Stays off after a reboot — nothing is deleted" : "Starts again automatically after a reboot");
-  return out;
-});
+const steps = computed(() => switchSteps(props.app));
 
 async function apply() {
-  const name = props.app.name, on = !isOn.value;
   confirming.value = false; busy.value = true;
-  try {
-    const r = await post<{ ok: boolean; detail: string | string[] }>("/svc-api/toggle", { name, on });
-    toast(r.ok ? `${name} ${on ? "started" : "stopped"}` : `Couldn't change ${name}: ${r.detail}`);
-  } catch { toast(`Couldn't reach the server to change ${name}`); }
+  await toggleApp(props.app.name, !isOn.value);
   busy.value = false; // the new state arrives over the live stream
 }
 </script>

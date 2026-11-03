@@ -8,6 +8,9 @@ import { dir } from "../core/config";
 export interface Card { id: string; type: string; title?: string; x: number; y: number; w: number; h: number; design?: string; query?: Record<string, unknown>; text?: string }
 export interface Dashboard { id?: string; title: string; description?: string; refresh?: number; cards: Card[] }
 
+/** Card types that show Home Assistant entities: they need query.entity (group: query.entities). */
+export const HA_CARDS = ["entity", "toggle", "climate", "camera", "media", "history", "button", "group"];
+
 export const SCHEMA = JSON.parse(readFileSync(join(import.meta.dir, "../../spec/dashboard.schema.json"), "utf8"));
 const check = new Ajv2020({ allErrors: true, strict: false }).compile(SCHEMA);
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/;
@@ -20,6 +23,8 @@ export function validate(d: unknown): string | null {
   for (const c of cards) {
     if (ids.has(c.id)) return `card id ${c.id} is used twice`;
     ids.add(c.id);
+    const q = (c.query ?? {}) as { entity?: string; entities?: string[] };
+    if (c.type === "group" ? !q.entities?.length : HA_CARDS.includes(c.type) && !q.entity) return `card ${c.id} (${c.type}) needs ${c.type === "group" ? "query.entities" : "query.entity"}`;
     if (c.x + c.w > 12) return `card ${c.id} runs past column 12 (x ${c.x} + w ${c.w})`;
   }
   return null;

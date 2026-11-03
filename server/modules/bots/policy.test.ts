@@ -294,21 +294,21 @@ test("adopt: an existing folder is used in place with its own files, team and Te
   expect(bots.create({ name: "old-bot", dir: join(root, "missing") })).toMatchObject({ ok: false });
   expect(bots.create({ name: "old-bot", dir: "relative/path" })).toMatchObject({ ok: false });
   expect(bots.create({ name: "old-bot", dir, telegramStateDir: tg })).toMatchObject({ ok: false }); // a state folder needs a token variable
-  const r = bots.create({ name: "old-bot", dir, team: "lahmacun", tokenEnv: "TELEGRAM_X", telegramStateDir: tg, preset: "full", deny: ["mcp__broker__buy"], readAnywhere: true });
+  const r = bots.create({ name: "old-bot", dir, team: "team-a", tokenEnv: "TELEGRAM_X", telegramStateDir: tg, preset: "full", deny: ["mcp__broker__buy"], readAnywhere: true });
   expect(r).toMatchObject({ ok: true, cwd: realpathSync(dir) });
   const b = bots.get("old-bot")!;
-  expect(b).toMatchObject({ adopted: true, team: "lahmacun", telegram: { tokenEnv: "TELEGRAM_X", stateDir: realpathSync(tg) } });
+  expect(b).toMatchObject({ adopted: true, team: "team-a", telegram: { tokenEnv: "TELEGRAM_X", stateDir: realpathSync(tg) } });
   expect(existsSync(join(bots.stateDir("old-bot"), "..", "..", "..", "bots", "old-bot"))).toBe(false); // no <home>/bots/<name>
   expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toContain("The persona.");
   expect(existsSync(join(dir, ".claude", "skills", "mine"))).toBe(true);
-  expect(calls).toContainEqual(expect.arrayContaining([join(ag, "scripts", "join.sh"), "lahmacun", "old-bot"]));
+  expect(calls).toContainEqual(expect.arrayContaining([join(ag, "scripts", "join.sh"), "team-a", "old-bot"]));
   const s = JSON.parse(readFileSync(join(b.cwd, ".claude", "settings.json"), "utf8"));
   expect(s.enabledMcpjsonServers).toContain("broker"); // its own server stays on
   expect(s.permissions.allow).toContain("mcp__broker");
   expect(s.permissions.deny).toContain("mcp__broker__buy");
   expect(s.permissions.blockReadsOutsideWorkingDirectories).toBeUndefined(); // readAnywhere
   expect(s.permissions.deny).toContain("Read(~/.env)"); // secrets stay denied
-  expect(bots.list()[0]).toMatchObject({ team: "lahmacun", adopted: true, cwd: b.cwd });
+  expect(bots.list()[0]).toMatchObject({ team: "team-a", adopted: true, cwd: b.cwd });
   expect((await bots.launch("old-bot", null, 0)).ok).toBe(true);
   expect(readFileSync(join(tg, ".env"), "utf8")).toBe("TELEGRAM_BOT_TOKEN=123:abc\n");
   expect(JSON.parse(readFileSync(join(tg, "access.json"), "utf8")).allowFrom).toEqual(["42", "123456789"]);
@@ -318,5 +318,5 @@ test("adopt: an existing folder is used in place with its own files, team and Te
   expect(bots.get("old-bot")!.telegram?.stateDir).toBe(realpathSync(tg));
   expect((await bots.remove("old-bot")).ok).toBe(true);
   expect(existsSync(join(dir, "CLAUDE.md")) && existsSync(join(tg, "access.json"))).toBe(true);
-  expect(calls).toContainEqual(expect.arrayContaining([join(ag, "scripts", "leave.sh"), "lahmacun", "old-bot"]));
+  expect(calls).toContainEqual(expect.arrayContaining([join(ag, "scripts", "leave.sh"), "team-a", "old-bot"]));
 });

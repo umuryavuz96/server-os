@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { humanSchedule, nextRun, prevRun, jobName, parseAgent } from "./ops";
 import { setSlice, setMapEntry, subscribe } from "./store";
 
@@ -24,7 +24,7 @@ test("jobName", () => {
   expect(jobName(`/x/lib/cron_wrap.sh --summary='deploy ok' "toolpile-deploy" /bin/bash /x/deploy.sh`)).toEqual(["toolpile-deploy", true]);
   expect(jobName(`/x/lib/cron_wrap.sh "yt-likes" /venv/python /x/sync.py`)).toEqual(["yt-likes", true]);
   expect(jobName(`/Users/u/scripts/docker-watchdog/watchdog.sh`)).toEqual(["docker-watchdog watchdog", false]);
-  expect(jobName(`/bin/bash /Users/u/bots/karpuz/crons/morning-checkin.sh`)).toEqual(["karpuz morning-checkin", false]);
+  expect(jobName(`/bin/bash /Users/u/bots/alphabot/crons/morning-checkin.sh`)).toEqual(["alphabot morning-checkin", false]);
 });
 
 test("store only broadcasts real changes", () => {
@@ -69,4 +69,39 @@ test("parseAgent: launchd plist -> schedule", () => {
   expect([svc.when, svc.always, svc.command, svc.log]).toEqual(["always running", true, "/bin/svc", "/x/e.log"]);
   expect(parseAgent({ RunAtLoad: true }).when).toBe("at login");
   expect(parseAgent({}).when).toBe("on demand");
+});
+
+describe("job ID cards", () => {
+  const full = { about: "Cleans caches. Keeps the disk free.", touches: { apps: ["Docker"], paths: ["~/Library/Caches"], data: "deletes old caches" }, uses: { tools: ["python3"], secrets: ["ADGUARD_PASSWORD"] }, risk: "destructive" };
+  test("parseCards keeps valid fields, drops notes, junk risks and secret values", async () => {
+    const { parseCards } = await import("./ops");
+    const c = parseCards({ _about: "note", a: { ...full, risk: "nuclear", uses: { tools: "bash, curl", secrets: ["TOKEN_A", "sk-live-abc123 xyz", " "] } }, "com.x.y": full });
+    expect(Object.keys(c)).toEqual(["a", "com.x.y"]);
+    expect(c.a.risk).toBeUndefined();
+    expect(c.a.uses).toEqual({ tools: ["bash", "curl"], secrets: ["TOKEN_A"] });
+    expect(c["com.x.y"].touches?.apps).toEqual(["Docker"]);
+    expect(parseCards("junk")).toEqual({});
+  });
+  test("parseCard keeps plain icon hints and drops junk", async () => {
+    const { parseCard } = await import("./jobCard");
+    expect(parseCard({ icons: { "Odd app": "Car Finder", Tool: "lucide:wrench", bad: "<script>", n: 5 } }).icons).toEqual({ "Odd app": "Car Finder", Tool: "lucide:wrench" });
+    expect(parseCard({ icons: "x" }).icons).toBeUndefined();
+  });
+  test("cardGaps names what a card lacks", async () => {
+    const { cardGaps, parseCard } = await import("./jobCard");
+    expect(cardGaps(parseCard(full))).toEqual([]);
+    expect(cardGaps(undefined)).toEqual(["about", "touches", "uses", "risk"]);
+    expect(cardGaps(parseCard({ about: "x", touches: { apps: [] }, uses: { secrets: ["A_B"] }, risk: "writes" }))).toEqual(["touches", "uses"]);
+  });
+  test("cardFields marks a job card ok or missing", async () => {
+    const { cardFields } = await import("./ops");
+    const { parseCard } = await import("./jobCard");
+    expect(cardFields(parseCard(full)).card).toBe("ok");
+    expect(cardFields(undefined)).toMatchObject({ card: "missing", about: null, risk: null, gaps: ["about", "touches", "uses", "risk"] });
+  });
+  test("a new job without a full card is rejected with a message", async () => {
+    const { newJobCardError } = await import("./jobCard");
+    expect(newJobCardError(full)).toBeNull();
+    expect(newJobCardError({ name: "x", about: "only this" })).toContain("missing: touches, uses, risk");
+  });
 });

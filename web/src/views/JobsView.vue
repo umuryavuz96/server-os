@@ -3,9 +3,13 @@
 // per job (schedule, last result, command, log, Run now behind a confirm dialog).
 import AnimatedNumber from "../components/AnimatedNumber.vue";
 import { ref, reactive, computed, watch } from "vue";
-import { S, ago, post, toast, type Job } from "../store";
+import { S, appList, ago, post, toast, type Job } from "../store";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import JobEditor from "../components/JobEditor.vue";
+import Icon from "../components/Icon.vue";
+import JobCard from "../components/JobCard.vue";
+import JobGlyph from "../components/JobGlyph.vue";
+import { resolveGlyph, type Glyph } from "../jobIcons";
 import { api } from "../store";
 
 // Built-in (server scheduler) jobs: editor drawer + run history.
@@ -19,7 +23,7 @@ async function setEnabled(j: Job, on: boolean) {
 }
 const dur = (ms: number | null) => (ms == null ? "running…" : ms < 1000 ? `${ms} ms` : ms < 90_000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms / 60000)} min`);
 
-type Seg = "all" | "fail" | "ok" | "untracked" | "paused";
+type Seg = "all" | "fail" | "ok" | "untracked" | "paused" | "nocard";
 const seg = ref<Seg>("all"), q = ref("");
 const sortKey = ref<"name" | "last" | "next">("next"), desc = ref(false);
 const openId = ref<string | null>(null), runAsk = ref<string | null>(null);
@@ -27,12 +31,14 @@ const logs = reactive<Record<string, string>>({});
 
 const jobs = computed(() => S.jobs ?? []);
 const isOk = (j: Job) => ["ok", "ran", "running"].includes(j.status);
+const noCard = computed(() => jobs.value.filter((j) => j.card === "missing").length);
+const RISK_CLS: Record<string, string> = { "read-only": "p-on", writes: "p-part", destructive: "p-bad" };
 const counts = computed(() => ({ all: jobs.value.length, fail: jobs.value.filter((j) => j.status === "fail").length, ok: jobs.value.filter(isOk).length,
   untracked: jobs.value.filter((j) => ["untracked", "unknown"].includes(j.status)).length, paused: jobs.value.filter((j) => !j.enabled).length }));
 const SEGS = computed(() => [["all", "All jobs", counts.value.all], ["fail", "Failing", counts.value.fail], ["ok", "OK", counts.value.ok], ["untracked", "Not tracked", counts.value.untracked], ["paused", "Paused", counts.value.paused]] as [Seg, string, number][]);
 const rows = computed(() => {
   const ql = q.value.trim().toLowerCase();
-  const list = jobs.value.filter((j) => (seg.value === "all" || (seg.value === "fail" ? j.status === "fail" : seg.value === "ok" ? isOk(j) : seg.value === "untracked" ? ["untracked", "unknown"].includes(j.status) : !j.enabled))
+  const list = jobs.value.filter((j) => (seg.value === "all" || seg.value === "nocard" && j.card === "missing" || (seg.value === "fail" ? j.status === "fail" : seg.value === "ok" ? isOk(j) : seg.value === "untracked" ? ["untracked", "unknown"].includes(j.status) : !j.enabled))
     && (!ql || (j.name + " " + j.command + " " + j.when).toLowerCase().includes(ql)));
   const key = (j: Job): number | string => sortKey.value === "name" ? j.name : sortKey.value === "last" ? j.lastRun ?? 0 : j.nextRun ?? Infinity;
   return [...list].sort((a, b) => { if (a.status === "fail" && b.status !== "fail" && sortKey.value === "next") return -1; if (b.status === "fail" && a.status !== "fail" && sortKey.value === "next") return 1;
@@ -66,6 +72,13 @@ async function runNow(id: string) {
   runAsk.value = null;
   try { const r = await post<{ ok: boolean; detail: string }>("/svc-api/jobs/run", { id }); toast(r.ok ? r.detail : "Couldn't run: " + r.detail); if (r.ok) setTimeout(loadRuns, 600); } catch { toast("Couldn't reach the server"); }
 }
+// Up to three real icons for a list row: the apps it touches first, then brand logos of its APIs and tools, then any generic icon.
+function mini(j: Job) {
+  const all = [...(j.touches?.apps ?? []), ...(j.uses?.apis ?? []), ...(j.uses?.tools ?? [])].map((l) => resolveGlyph(l, appList.value, j.icons?.[l]));
+  const seen = new Set<string>(), uniq = all.filter((g) => !seen.has(g.key) && !!seen.add(g.key));
+  const real = uniq.filter((g) => g.kind === "app" || g.kind === "brand"), pick = real.length ? real : uniq.filter((g) => g.kind !== "letter");
+  return { icons: pick.slice(0, 3), more: Math.max(0, pick.length - 3) };
+}
 const nextTxt = (t: number | null) => (!t ? "—" : t <= Date.now() / 1000 + 30 ? "due now" : ago(t));
 const clock = (t: number | null) => (t ? new Date(t * 1000).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "—");
 </script>
@@ -74,7 +87,8 @@ const clock = (t: number | null) => (t ? new Date(t * 1000).toLocaleString("en-G
   <main class="page">
     <header class="ph">
       <h1>Jobs</h1>
-      <button type="button" class="btn primary" style="margin-left: auto" @click="editing = 'new'">+ New job</button>
+      <button type="button" class="jc-count" :class="noCard ? 'jc-bad' : 'jc-good'" :aria-pressed="seg === 'nocard'" :disabled="!noCard" @click="seg = seg === 'nocard' ? 'all' : 'nocard'">{{ noCard ? `${noCard} without ID card` : "All jobs have ID cards" }}</button>
+      <button type="button" class="btn primary" @click="editing = 'new'">+ New job</button>
       <label class="search2">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
         <input v-model="q" type="search" placeholder="Search jobs…" aria-label="Search jobs" />
@@ -94,7 +108,7 @@ const clock = (t: number | null) => (t ? new Date(t * 1000).toLocaleString("en-G
       </div>
     </section>
 
-    <div class="tbl" role="table" aria-label="Jobs">
+    <div class="tbl jobs-tbl" role="table" aria-label="Jobs">
       <div class="tr th jr" role="row">
         <button type="button" role="columnheader" @click="sortBy('name')">Job {{ arrow("name") }}</button>
         <span role="columnheader">Status</span>
@@ -105,7 +119,10 @@ const clock = (t: number | null) => (t ? new Date(t * 1000).toLocaleString("en-G
       <p v-if="!S.jobs" class="hint" style="padding: 16px">Loading jobs…</p>
       <TransitionGroup tag="div" name="tl" class="tbody">
         <div v-for="j in rows" :key="j.id" class="tr jr" :class="{ dim: !j.enabled }" role="row" tabindex="0" @click="openId = j.id" @keydown.enter="openId = j.id">
-          <span class="an" role="cell"><b>{{ j.name }}<span v-if="j.source === 'launchd'" class="pill p-off" style="margin-left: 8px">LAUNCHD</span></b><small>{{ j.status === "fail" && j.cause ? j.cause : j.when }}</small></span>
+          <span class="jc-nm" role="cell">
+            <span class="jc-mini" aria-hidden="true"><JobGlyph v-for="(g, i) in mini(j).icons" :key="g.key" :glyph="g" :size="26" :style="{ zIndex: 9 - i }" /><em v-if="mini(j).more" class="jc-more">+{{ mini(j).more }}</em></span>
+            <span class="an"><b>{{ j.name }}<span v-if="j.source === 'launchd'" class="pill p-off" style="margin-left: 8px">LAUNCHD</span><span v-if="j.risk" class="pill jc-pill" :class="RISK_CLS[j.risk]">{{ j.risk }}</span><span v-if="j.card === 'missing'" class="pill jc-pill p-part">No description</span></b><small>{{ j.status === "fail" && j.cause ? j.cause : j.when }}</small></span>
+          </span>
           <span role="cell"><span class="pill" :class="st(j)[0]">{{ st(j)[1] }}</span></span>
           <span class="num" role="cell">{{ j.lastRun ? ago(j.lastRun) : "—" }}</span>
           <span class="num" role="cell">{{ j.enabled ? nextTxt(j.nextRun) : "—" }}</span>
@@ -119,19 +136,18 @@ const clock = (t: number | null) => (t ? new Date(t * 1000).toLocaleString("en-G
       <Transition name="drawer">
         <div v-if="opened" class="dr-wrap">
           <div class="dr-bg" @click="openId = null"></div>
-          <aside class="dr" role="dialog" aria-modal="true" :aria-label="opened.name">
+          <aside class="dr jc-dr" role="dialog" aria-modal="true" :aria-label="opened.name">
             <div class="dr-h"><span class="dr-title">{{ opened.name }}</span><button type="button" class="btn" aria-label="Close" @click="openId = null">✕</button></div>
             <div class="dr-b">
-              <div style="display: flex; gap: 8px; align-items: center"><span class="pill" :class="st(opened)[0]">{{ st(opened)[1] }}</span><span class="muted">{{ opened.when }}</span></div>
               <div v-if="opened.status === 'fail' && opened.cause" class="warnbox">{{ opened.cause }}</div>
+              <JobCard :job="opened" :status-class="st(opened)[0]" :status-text="st(opened)[1]" />
               <div class="dbox lifebox">
                 <div class="kv2"><span>Last run</span><b>{{ clock(opened.lastRun) }}</b></div>
                 <div class="kv2"><span>Next run</span><b>{{ opened.enabled ? clock(opened.nextRun) : "paused" }}</b></div>
                 <div class="kv2"><span>Schedule</span><b>{{ opened.schedule }}</b></div>
               </div>
-              <div class="logsrc">Command</div>
+              <div class="logsrc jc-cmd"><Icon name="code" :size="14" />Command</div>
               <pre class="log" style="max-height: 140px">{{ opened.command }}</pre>
-              <p v-if="opened.about" style="margin: 0; color: var(--muted)">{{ opened.about }}</p>
               <template v-if="builtIn(opened)">
                 <div style="display: flex; gap: 8px">
                   <button type="button" class="btn" @click="editing = opened.id.slice(3)">Edit</button>

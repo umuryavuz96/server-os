@@ -8,6 +8,9 @@ import { NativeBots, botsProvider, cleanPrompt, shq, type Exec } from "./native"
 function fakeTmux(live: string[]) {
   const sessions = new Set(live);
   const calls: { cmd: string[]; stdin?: string }[] = [];
+  /** Panes per session (pane ids), for sessions an agent team split; others list nothing, like an unreadable list. */
+  const panes = new Map<string, string[]>();
+  const owner = (t: string) => (sessions.has(t) ? t : [...panes].find(([, ids]) => ids.includes(t))?.[0] ?? null);
   const exec: Exec = (cmd, stdin) => {
     calls.push({ cmd, stdin });
     const [, sub, ...a] = cmd;
@@ -16,11 +19,12 @@ function fakeTmux(live: string[]) {
       case "list-sessions": return sessions.size ? { code: 0, out: [...sessions].join("\n") } : { code: 1, out: "no server running" };
       case "new-session": sessions.add(a[a.indexOf("-s") + 1]); return { code: 0, out: "" };
       case "kill-session": return sessions.delete(t) ? { code: 0, out: "" } : { code: 1, out: "can't find session" };
-      case "capture-pane": return sessions.has(t) ? { code: 0, out: `screen of ${t}\n\n` } : { code: 1, out: "can't find pane" };
+      case "list-panes": return panes.has(t) ? { code: 0, out: panes.get(t)!.join("\n") + "\n" } : sessions.has(t) ? { code: 0, out: "" } : { code: 1, out: "can't find session" };
+      case "capture-pane": { const s = owner(t); return s ? { code: 0, out: `screen of ${s}\n\n` } : { code: 1, out: "can't find pane" }; }
       default: return { code: 0, out: "" };
     }
   };
-  return { sessions, calls, exec };
+  return { sessions, calls, exec, panes };
 }
 
 function setup(live: string[] = [], env = "") {
@@ -35,7 +39,7 @@ function setup(live: string[] = [], env = "") {
   return { home, claudeJson, bots, ...t };
 }
 
-const OWNER = ["bot-main", "bot-karpuz", "bot-voice", "sos", "work"];
+const OWNER = ["bot-main", "bot-alphabot", "bot-voice", "sos", "work"];
 
 test("lists only prefixed sessions, never the owner's", async () => {
   const { bots, exec } = setup([...OWNER, "sos-orphan"]);
@@ -60,7 +64,7 @@ test("every tmux command targets an exact <prefix><name> session", async () => {
   expect(bots.key("testbot", "Escape").ok).toBe(true);
   expect((await bots.stop("testbot")).ok).toBe(true);
   for (const { cmd } of calls) {
-    const i = cmd.indexOf("-t"), s = cmd.indexOf("-s");
+    const i = cmd.indexOf("-t"), s = cmd[1] === "new-session" ? cmd.indexOf("-s") : -1;
     if (i >= 0) expect(cmd[i + 1]).toMatch(/^=sos-testbot:?$/);
     if (s >= 0) expect(cmd[s + 1]).toBe("sos-testbot");
   }
@@ -148,10 +152,24 @@ test("send: bracketed paste of cleaned text via a tmux buffer, then Enter", asyn
   await bots.launch("pp", null, 0);
   calls.length = 0;
   await bots.send("pp", "line 1\r\nline 2 $(rm -rf ~) `x` 'q' \x1b[201~\x07done");
-  expect(calls.map((c) => c.cmd.slice(1, 2)[0])).toEqual(["list-sessions", "load-buffer", "paste-buffer", "send-keys"]);
+  expect(calls.map((c) => c.cmd.slice(1, 2)[0])).toEqual(["list-sessions", "load-buffer", "list-panes", "paste-buffer", "list-panes", "send-keys"]);
   expect(calls[1].stdin).toBe("line 1\nline 2 $(rm -rf ~) `x` 'q' [201~done");
-  expect(calls[2].cmd).toContain("-p");
-  expect(calls[3].cmd.at(-1)).toBe("Enter");
+  expect(calls[3].cmd).toContain("-p");
+  expect(calls[5].cmd.at(-1)).toBe("Enter");
+});
+
+test("an agent team split the bot's window: typing and Escape go to the bot's own (oldest) pane", async () => {
+  const { bots, calls, panes } = setup();
+  bots.create({ name: "team" });
+  await bots.launch("team", null, 0);
+  panes.set("sos-team", ["%12", "%40", "%41"]); // %41 is the active teammate pane
+  calls.length = 0;
+  expect((await bots.send("team", "hi")).ok).toBe(true);
+  expect(bots.key("team", "Escape").ok).toBe(true);
+  expect(bots.terminal("team")).toMatchObject({ ok: true, contents: "screen of sos-team" });
+  const targeted = calls.filter((c) => ["paste-buffer", "send-keys", "capture-pane"].includes(c.cmd[1])).map((c) => c.cmd[c.cmd.indexOf("-t") + 1]);
+  expect(targeted).toEqual(["%12", "%12", "%12", "%12"]);
+  for (const c of calls.filter((c) => c.cmd[1] === "list-panes")) expect(c.cmd[c.cmd.indexOf("-t") + 1]).toBe("=sos-team");
 });
 
 test("cleanPrompt and shq", () => {

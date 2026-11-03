@@ -2,10 +2,12 @@
 // One dashboard card. The JSON says what to show (type + query) and how (design); data comes from the live
 // state stream or, for history cards, from the server's range query.
 import { computed, ref, watch, onUnmounted } from "vue";
-import { S, appList, mb, ago, api, uptimeFor } from "../store";
+import { S, appList, mb, ago, api, uptimeFor, usageWindows } from "../store";
 import AppIcon from "../components/AppIcon.vue";
 import BarChart from "../components/BarChart.vue";
 import LineChart, { type Series } from "./LineChart.vue";
+import HaCard from "./HaCard.vue";
+import { HA_TYPES } from "./ha";
 
 export interface Card { id: string; type: string; title?: string; x: number; y: number; w: number; h: number; design?: string; query?: Record<string, any>; text?: string }
 const props = defineProps<{ card: Card; refresh: number }>();
@@ -68,7 +70,7 @@ const jobs = computed(() => {
   return list.slice(0, limit.value);
 });
 const bots = computed(() => [...(S.botSessions ?? [])].filter((b) => (q.value.filter === "running" ? b.running : true)).sort((a, b) => Number(b.running) - Number(a.running)).slice(0, limit.value));
-const usage = computed(() => (S as any).claudeUsage as { plan: string | null; session: { pct: number; resetsAt: number | null } | null; week: { pct: number; resetsAt: number | null } | null } | null);
+const usage = computed(() => S.claudeUsage ?? null);
 const claudeJobs = computed(() => (((S as any).claudeJobs ?? []) as { pid: number; label: string; kind: string; model: string | null; endedAt: number | null }[]).filter((j) => !j.endedAt).slice(0, limit.value));
 
 const logs = ref<{ time: string; level: string; message: string; trace_id?: string }[] | null>(null);
@@ -161,10 +163,11 @@ const title = computed(() => props.card.title ?? m.value?.label ?? props.card.ty
     <template v-else-if="card.type === 'claude'">
       <div class="dc-head"><span class="dc-t">{{ title }}</span><span class="dc-r">{{ usage?.plan ?? "" }}</span></div>
       <template v-if="card.design !== 'jobs' && usage">
-        <div v-for="[k, l] in ([['session', 'Session (5 h)'], ['week', 'Week']] as const)" :key="k" style="margin-top: 8px">
-          <div style="display: flex; justify-content: space-between; font-size: 13px"><span class="muted">{{ l }}</span><b class="num">{{ usage[k]?.pct ?? "–" }}%</b></div>
-          <div class="bar"><i :style="{ width: (usage[k]?.pct ?? 0) + '%', background: (usage[k]?.pct ?? 0) >= 90 ? 'var(--bad)' : (usage[k]?.pct ?? 0) >= 70 ? 'var(--warn)' : 'var(--ink)' }"></i></div>
+        <div v-for="w in usageWindows(usage)" :key="w.key" style="margin-top: 8px">
+          <div style="display: flex; justify-content: space-between; font-size: 13px"><span class="muted">{{ w.label }}</span><b class="num">{{ w.pct }}%</b></div>
+          <div class="bar"><i :style="{ width: w.pct + '%', background: w.pct >= 90 ? 'var(--bad)' : w.pct >= 70 ? 'var(--warn)' : 'var(--ink)' }"></i></div>
         </div>
+        <p v-if="usage.noSessionLimit" class="hint" style="margin: 6px 0 0">No 5-hour limit on this plan</p>
       </template>
       <div class="dc-list" style="margin-top: 10px">
         <div v-for="j in claudeJobs" :key="j.pid" class="dc-li"><span class="led on"></span><span class="dc-ln"><b>{{ j.label }}</b><small>{{ j.kind }}</small></span><span class="num muted">{{ j.model ?? "" }}</span></div>
@@ -187,5 +190,8 @@ const title = computed(() => props.card.title ?? m.value?.label ?? props.card.ty
       <!-- eslint-disable-next-line vue/no-v-html — escaped above, only our own tags are added -->
       <div class="dc-md" v-html="md"></div>
     </template>
+
+    <!-- Home Assistant: entity, toggle, climate, camera, media, history, button, group -->
+    <HaCard v-else-if="HA_TYPES.includes(card.type)" :card="card" :refresh="refresh" />
   </div>
 </template>

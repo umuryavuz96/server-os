@@ -9,6 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - run: bash scripts/privacy-guard.sh
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun test server

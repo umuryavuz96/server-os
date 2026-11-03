@@ -13,6 +13,7 @@ import { join, resolve } from "node:path";
 import { HOME, loadEnv } from "../../lib";
 import { projectDir, Transcript } from "./transcript";
 import { Agmsg, AGMSG_INSTALL, AGMSG_REPO } from "./agmsg";
+import { botPane } from "./tmuxPane";
 import { applyWorkspace, defaultCatalogPaths, mcpOn, readCatalog, type CatalogPaths } from "./catalog";
 import { accessJson, identityBlock, PRESETS, secretsFile, settingsJson, validChatId, validRule, withDefaults, withIdentity, type BotPolicy, type Preset } from "./policy";
 
@@ -134,7 +135,8 @@ export class NativeBots {
   // ---------- tmux: only ever sessions with our prefix ----------
   session = (name: string) => this.prefix + name;
   /** "=" makes tmux match the session name exactly; a plain -t also matches prefixes ("sos-a" → "sos-ab"). */
-  target = (name: string) => `=${this.prefix}${name}:`;
+  /** The bot's own (oldest) pane, not an agent-team teammate's split pane, which tmux would pick as the active one. */
+  target = (name: string) => botPane(this.tmux, this.session(name), (cmd) => this.exec(cmd));
   /** Live tmux sessions that carry the prefix. Anything else on the tmux server is not ours and is left out. */
   sessions(): Set<string> {
     const r = this.exec([this.tmux, "list-sessions", "-F", "#{session_name}"]);

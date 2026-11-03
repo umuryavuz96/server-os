@@ -5,6 +5,7 @@ import { join, basename, dirname } from "node:path";
 import { HOME, run, log, every } from "./lib";
 import { setSlice } from "./store";
 import { DEMO, demoAlerts } from "./demo";
+import { cardGaps, parseCard, type Card, type Risk, type Touches, type Uses } from "./jobCard";
 
 // ---------- notify history: read the (70 MB) JSONL backwards, newest first ----------
 export interface HistEntry { t: number; job: string; action: string; sent: boolean; id: number | null; cause: string; title: string; body: string; input_status?: string; }
@@ -103,11 +104,22 @@ export interface Job {
   id: string; name: string; schedule: string; when: string; enabled: boolean; nextRun: number | null; status: string; lastRun: number | null; cause: string; log: string | null; command: string;
   // ID card (integrations.cron.cards) + the last runs it reported to the notify bot, newest first
   prevRun: number | null; category: string | null; about: string | null; reports: string | null; project: string | null; runs: { t: number; ok: boolean }[];
+  // the rest of the ID card (see jobCard.ts); card "missing" = about/touches/uses/risk incomplete, gaps names what is lacking
+  touches: Touches | null; uses: Uses | null; risk: Risk | null; icons: Record<string, string> | null; card: "ok" | "missing"; gaps: string[];
   source?: "launchd"; canRun?: boolean; // launchd agents (integrations.cron.launchd); canRun false = an always-running service, kickstart would do nothing
 }
 const CARDS = () => cronCfg()?.cards;
-type Card = { category?: string; about?: string; reports?: string; project?: string };
-function readCards(): Record<string, Card> { const f = CARDS(); if (!f) return {}; try { return JSON.parse(readFileSync(f, "utf8")); } catch { return {}; } }
+/** jobs.json: crontab jobs are keyed by job name, launchd agents by label (com.example.foo). `_`-prefixed keys are notes. */
+export function parseCards(raw: unknown): Record<string, Card> {
+  return Object.fromEntries(Object.entries(raw && typeof raw === "object" ? raw : {}).filter(([k]) => !k.startsWith("_")).map(([k, v]) => [k, parseCard(v)]));
+}
+function readCards(): Record<string, Card> { const f = CARDS(); if (!f) return {}; try { return parseCards(JSON.parse(readFileSync(f, "utf8"))); } catch { return {}; } }
+/** The card part of a Job (shared by crontab, launchd and scheduler jobs). */
+export function cardFields(c: Card | undefined) {
+  const gaps = cardGaps(c);
+  return { category: c?.category ?? null, about: c?.about ?? null, reports: c?.reports ?? null, project: c?.project ?? null,
+    touches: c?.touches ?? null, uses: c?.uses ?? null, risk: c?.risk ?? null, icons: c?.icons ?? null, card: gaps.length ? "missing" as const : "ok" as const, gaps };
+}
 
 // ---------- launchd agents (integrations.cron.launchd = label prefix) ----------
 type PlistLike = { Label?: string; Program?: string; ProgramArguments?: string[]; StartInterval?: number; StartCalendarInterval?: Record<string, number> | Record<string, number>[];
@@ -131,7 +143,7 @@ export function parseAgent(p: PlistLike): { when: string; schedule: string; alwa
 let ldCache: { t: number; jobs: Job[] } | null = null;
 async function readLaunchd(prefix: string): Promise<Job[]> {
   if (ldCache && Date.now() - ldCache.t < 30_000) return ldCache.jobs;
-  const dir = join(HOME, "Library/LaunchAgents"), uid = process.getuid?.() ?? 501;
+  const dir = join(HOME, "Library/LaunchAgents"), uid = process.getuid?.() ?? 501, cards = readCards();
   let files: string[] = []; try { files = readdirSync(dir).filter((f) => f.startsWith(prefix) && f.endsWith(".plist")); } catch {}
   const jobs = (await Promise.all(files.map(async (f): Promise<Job | null> => {
     const label = f.slice(0, -6);
@@ -145,7 +157,8 @@ async function readLaunchd(prefix: string): Promise<Job[]> {
     const logf = a.log && existsSync(a.log) ? a.log : null;
     return { id: `ld:${label}`, name: label.slice(prefix.length) || label, schedule: a.schedule, when: a.when, enabled: loaded, nextRun: null, prevRun: null, status,
       lastRun: logf ? statSync(logf).mtimeMs / 1000 : null, cause: !loaded ? "" : exit && exit !== "0" ? `exit code ${exit}` : bad ? "not running" : "", log: logf, command: a.command,
-      category: "launchd", about: loaded ? `launchd agent ${label}${runs ? `, ${runs} runs since load` : ""}` : `launchd agent ${label} (not loaded)`, reports: null, project: null, runs: [],
+      ...cardFields(cards[label]), category: cards[label]?.category ?? "launchd", runs: [],
+      about: cards[label]?.about ?? (loaded ? `launchd agent ${label}${runs ? `, ${runs} runs since load` : ""}` : `launchd agent ${label} (not loaded)`),
       source: "launchd", canRun: !a.always };
   }))).filter((j): j is Job => !!j);
   ldCache = { t: Date.now(), jobs };
@@ -177,8 +190,7 @@ export async function readJobs(): Promise<Job[]> {
     const status = disabled ? "paused" : h ? (["ok", "signal", "heartbeat"].includes(h.input_status ?? "") ? "ok" : "fail") : mtime ? "ran" : wrapped ? "unknown" : "untracked";
     jobs.push({ id: `cron:${idx}`, name, schedule, when: humanSchedule(schedule), enabled: !disabled, nextRun: disabled ? null : nextRun(schedule), prevRun: disabled ? null : prevRun(schedule),
       status, lastRun: h?.t ?? mtime, cause: h?.cause ?? "", log: mtime ? logf : null, command,
-      category: cards[name]?.category ?? null, about: cards[name]?.about ?? null, reports: cards[name]?.reports ?? null, project: cards[name]?.project ?? null,
-      runs: runs.get(name) ?? [] });
+      ...cardFields(cards[name]), runs: runs.get(name) ?? [] });
   });
   const ld = cronCfg()?.launchd; if (ld) jobs.push(...await readLaunchd(ld));
   // pure-comment lines that merely look like jobs (e.g. "# 0 8 * * * old thing") count as paused; real disabled jobs are kept

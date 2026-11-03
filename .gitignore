@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 web/dist/
 var/
 .claude/worktrees/
@@ -10,3 +10,7 @@ docs/OPEN-SOURCE-PLAN.md
 # Launch-video tooling (local only)
 brag-output/
 .claude/skills/brag/
+
+# House renders: downloaded CC0 assets and the bpy venv (tools/house-render)
+tools/house-render/.cache/
+tools/house-render/.venv

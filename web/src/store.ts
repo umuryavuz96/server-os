@@ -4,11 +4,40 @@ import { reactive, computed } from "vue";
 export interface AppState {
   name: string; group: string; order: number; href: string; icon: string; about: string;
   kind: "lock" | "gate" | "switch"; warn: boolean; state: "on" | "off" | "part"; parts: Record<string, boolean>; mem: number;
+  /** How mem was measured (server memOf): vm footprint, docker cgroup, process tree, port owner, or why there is no number. */
+  memSrc?: "vm" | "docker" | "process" | "port" | "static" | "remote" | "unknown" | "off";
 }
+export interface RamOther { appsMB: number; dockerOtherMB: number; otherMB: number; top: { name: string; mb: number; n: number }[] }
+const MEM_LABEL = { static: "static", remote: "remote", unknown: "n/a", off: "" } as const;
+/** RAM cell text: the measured number, or the reason there is none. */
+export const memText = (a: AppState) => (a.mem > 0 ? mb(a.mem) : a.memSrc && a.memSrc in MEM_LABEL ? MEM_LABEL[a.memSrc as keyof typeof MEM_LABEL] : a.kind === "gate" ? "static" : "—");
+const MEM_HOW = { vm: "Measured: VM memory on the host", docker: "Measured: container memory (docker stats)", process: "Measured: process tree resident memory", port: "Measured: process listening on its port", static: "Static site served by Caddy, no own process", remote: "Runs on another machine", unknown: "No process found to measure", off: "Stopped" } as const;
+export const memHow = (a: AppState) => (a.memSrc ? MEM_HOW[a.memSrc] : "");
 export interface System { cpuTemp: number | null; gpuTemp: number | null; load1: number | null; ramUsedGB: number | null; ramTotalGB: number; swapGB: number | null; boot: number | null; internal: { totalGB: number; freeGB: number } | null; ssd: { totalGB: number; freeGB: number } | null; }
 export interface SpeedPoint { t: number; ping: number; down: number; up: number; }
+/** The Ram tab's live slice (server/ram.ts). All sizes in MB. */
+export interface RamGroup { name: string; mb: number; n: number; icon?: boolean; src?: string | null; app?: boolean; bins?: string[]; procs: { pid: number; mb: number; upSec: number; bin?: string }[] }
+export interface RamMover { name: string; nowMB: number; beforeMB: number; deltaMB: number; isNew: boolean }
+/** One row of the Ram tab's main list (server/ram.ts buildList): every thing that holds RAM once; bundles expand into kids. */
+export interface RamKid { key: string; name: string; mb: number; sub?: string; app?: string | null; src?: string | null; icon?: boolean }
+export interface RamRow {
+  key: string; name: string; kind: "vm" | "docker" | "panel" | "claude" | "app" | "proc" | "macos" | "small";
+  mb: number; n: number; sub?: string; src?: string | null; icon?: boolean; href?: string; kids: RamKid[]; more?: { n: number; mb: number };
+}
+export interface RamSlice {
+  list?: RamRow[];
+  at: number; totalMB: number; usedMB: number | null; pressure: "normal" | "warn" | "critical" | "unknown"; swapUsedMB: number; swapTotalMB: number;
+  compressedMB: number; wiredMB: number; appMB: number; cachedMB: number; freeMB: number; procSumMB: number;
+  breakdown: { key: "vms" | "apps" | "claude" | "other" | "macos"; label: string; mb: number }[]; restMB: number;
+  vms: { name: string; kind: "utm" | "docker"; configuredMB: number | null; footprintMB: number; running: boolean; overheadMB: number; items: { name: string; mb: number; app: string | null }[] }[];
+  claude: { pid: number; name: string; agent: string | null; cwd: string; status: string; mb: number; n: number; startedAt: number; src?: string | null }[];
+  groups: RamGroup[]; groupCount: number; otherMB: number;
+  movers: { spanMin: number; up: RamMover[]; down: RamMover[] };
+}
 export interface Monitor { name: string; pct: number | null; up: boolean; lastUp: number | null; }
-export interface Job { id: string; name: string; schedule: string; when: string; enabled: boolean; nextRun: number | null; status: string; lastRun: number | null; cause: string; log: string | null; command: string; about?: string | null; category?: string | null; source?: "server" | "launchd"; canRun?: boolean; kind?: "command" | "claude" | "http"; webhook?: boolean; }
+export interface Job { id: string; name: string; schedule: string; when: string; enabled: boolean; nextRun: number | null; status: string; lastRun: number | null; cause: string; log: string | null; command: string; about?: string | null; category?: string | null; source?: "server" | "launchd"; canRun?: boolean; kind?: "command" | "claude" | "http"; webhook?: boolean;
+  reports?: string | null; project?: string | null; touches?: { apps?: string[]; paths?: string[]; data?: string } | null; uses?: { tools?: string[]; apis?: string[]; secrets?: string[]; model?: string } | null;
+  risk?: "read-only" | "writes" | "destructive" | null; icons?: Record<string, string> | null; card?: "ok" | "missing"; gaps?: string[]; }
 export interface Bot { dir: string; name: string; state: string; since: number | null; lastFile: number | null; }
 export interface Hook { slug: string; label: string; description: string; port: number; state: string; listening: boolean; logMtime: number | null; logTail: string; }
 export interface HistEntry { t: number; job: string; action: string; sent: boolean; id: number | null; cause: string; title: string; body: string; }
@@ -24,7 +53,26 @@ export interface BotSession {
   preset?: "safe" | "dev" | "full"; role?: string; isolated?: boolean; sandbox?: boolean; network?: boolean; folders?: string[]; secrets?: number; team?: string | null;
 }
 export interface Life { uptime24: number | null; uptime7d: number | null; healthy: boolean | null; code: number | null; since: number | null; restarts7d: number; lastChange: number | null; checkedVia: "http" | "process"; }
-export interface ClaudeUsage { plan: string | null; session: { pct: number; resetsAt: number | null } | null; week: { pct: number; resetsAt: number | null } | null; fetchedAt: number; error: string | null }
+export interface UsageWindow { key: string; label: string; pct: number; resetsAt: number | null; hours: number | null }
+export interface ClaudeUsage { plan: string | null; session: { pct: number; resetsAt: number | null } | null; week: { pct: number; resetsAt: number | null } | null;
+  windows?: UsageWindow[]; noSessionLimit?: boolean; fetchedAt: number; error: string | null }
+/** Every limit window to draw (the server's list; an older server's session/week otherwise). */
+export function usageWindows(u: ClaudeUsage | null | undefined): UsageWindow[] {
+  if (!u) return [];
+  if (u.windows) return u.windows;
+  return [["five_hour", "Session · 5 h", 5, u.session], ["seven_day", "Week", 168, u.week]]
+    .filter((x) => x[3]).map(([key, label, hours, w]) => ({ key: key as string, label: label as string, hours: hours as number, ...(w as { pct: number; resetsAt: number | null }) }));
+}
+export interface UsageMeter { label: string; used: number; limit: number | null; unit: string; pct: number | null; resetsAt: number | null }
+export interface UsageService { id: string; name: string; icon: string; fallback: string; group: string; kind: "paid" | "free" | "local"; via: string[]; plan: string | null; planManual: boolean; meters: UsageMeter[]; spend: { label: string; amount: number } | null;
+  monthly: number | null; costSource: "manual" | "api" | "estimate" | "free" | null; renewalDay: number | null; renewsAt: number | null; status: "ok" | "near" | "error" | "unknown"; error: string | null; note: string | null; checkedAt: number | null; billing: string; hidden: boolean }
+export interface UsageSnapshot { services: UsageService[]; totals: { monthly: number; known: number; estimated: number; unknown: number; actual: number }; currency: string; checkedAt: number | null; scanning: boolean }
+export interface FixedCost { id: string; name: string; monthly: number; note?: string }
+export interface CostsSnapshot { currency: string; updatedAt: number; headline: { monthly: number; actual: number; estimate: number };
+  subscriptions: { monthly: number; unknown: number; items: { id: string; name: string; monthly: number; source: string }[] }; fixed: { monthly: number; items: FixedCost[] };
+  electricity: { monthly: number; watts: number | null; avgWatts: number | null; kwhMonth: number; price: number; source: "measured" | "estimate"; machine: string; days: number };
+  ai: { available: boolean; today: number; week: number; month: number; tokens: number; unpriced: number; days: { date: string; cost: number }[]; top: { label: string; kind: string; cost: number; tokens: number; share: number; models: string[] }[]; scannedAt: number | null };
+  trend: { date: string; cost: number; ai: number }[] }
 export interface ClaudeJob { pid: number; kind: "bot" | "headless" | "interactive"; label: string; detail: string; model: string | null; cwd: string | null; startedAt: number; cpu: number; memMB: number; endedAt: number | null }
 /** The self-updater (server/modules/update.ts), pushed as the `update` slice. */
 export interface UpdateStatus {
@@ -36,11 +84,16 @@ export interface UpdateStatus {
   last: { ok: boolean; from: string; to: string; at: number; reason?: string; rolledBack?: boolean } | null;
   settings: { channel: "stable" | "beta"; auto: "off" | "notify" | "nightly" }; nextAutoAt: number | null;
 }
+/** A Home Assistant entity as the bridge sends it (server/modules/ha.ts). */
+export interface HaEntity { id: string; name: string; domain: string; state: string; unit?: string; icon?: string; area?: string; attrs?: Record<string, any> }
 interface State {
   connected: boolean;
+  /** Entities that dashboards show, live; haBridge says whether Home Assistant is reachable and how (ws | poll). */
+  haEntities: Record<string, HaEntity>; haBridge?: { configured: boolean; online: boolean; mode: "off" | "ws" | "poll" } | null;
   update?: UpdateStatus | null;
+  usage?: UsageSnapshot | null; costs?: CostsSnapshot | null;
   claudeUsage?: ClaudeUsage | null; claudeJobs?: ClaudeJob[] | null;
-  apps: Record<string, AppState>; groups: string[];
+  apps: Record<string, AppState>; groups: string[]; ramOther?: RamOther | null; ram?: RamSlice | null;
   system: System | null; dns: { unboundHitRate: number | null; adguard: { queries: number; blocked: number; clients: number } | null } | null;
   ha: { online: boolean; peopleHome?: number; people?: number; lightsOn?: number; lights?: number; switchesOn?: number; switches?: number; weather?: { state: string; temp: number | null } | null } | null;
   speed: { points: SpeedPoint[]; last: SpeedPoint | null } | null;
@@ -48,11 +101,13 @@ interface State {
   jobs: Job[] | null; bots: Bot[] | null; hooks: Hook[] | null; alerts24: Alerts | null;
   sysHistory: { t: number[]; cpu: (number | null)[]; ram: (number | null)[]; swap: (number | null)[]; load: (number | null)[]; disk: (number | null)[] } | null;
   botSessions: BotSession[] | null;
+  /** Permission asks waiting per bot channel (the Bots list badge). */
+  botApprovals?: Record<string, number>;
   botsProvider?: { provider: "claudeOS" | "native" | "both" | "demo" | null; prefix: string | null; missing: string[] } | null;
   life: Record<string, Life> | null;
 }
 export const S = reactive<State>({
-  connected: false, apps: {}, groups: [], system: null, dns: null, ha: null, speed: null, uptime: null, jobs: null, bots: null, hooks: null, alerts24: null, sysHistory: null, botSessions: null, life: null,
+  connected: false, haEntities: {}, apps: {}, groups: [], system: null, dns: null, ha: null, speed: null, uptime: null, jobs: null, bots: null, hooks: null, alerts24: null, sysHistory: null, botSessions: null, life: null,
 });
 
 export function connect() {

@@ -1,23 +1,52 @@
 <script setup lang="ts">
 // Overview: option 3 from the Claude Design round — hero card (big number on its trend) + chip switcher + alert stack on phones,
 // a bento grid of hero tiles on desktop; then summary cards with "See all".
-import { ref, computed, onUnmounted } from "vue";
-import { S, appList, totalMem, uptimeFor, mb, ago, api, toast } from "../store";
+import { ref, computed, onUnmounted, watch } from "vue";
+import { S, appList, totalMem, uptimeFor, mb, ago, api, toast, usageWindows } from "../store";
 import HeroMetric from "../components/HeroMetric.vue";
 import AlertStack from "../components/AlertStack.vue";
 import AppIcon from "../components/AppIcon.vue";
 import UpdateCard from "../components/UpdateCard.vue";
 import { missingRequired, P } from "../permissions";
+import StatCard from "../desktop/StatCard.vue";
+import type { IconName } from "../icons";
+import { look } from "../desktop/prefs";
+
+const props = defineProps<{ ownerName?: string | null }>();
+// Glass desktop: a greeting header (the reel's "Good evening, Robert") and one range pill for every chart on the page.
+const desk = computed(() => look.layout === "desktop");
+const greeting = computed(() => {
+  const h = new Date(nowS.value * 1000).getHours(), part = h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  const first = props.ownerName?.trim().split(/\s+/)[0];
+  return first ? `${part}, ${first}` : part;
+});
+const subtitle = computed(() => {
+  const on = appList.value.filter((a) => a.state !== "off").length, fail = (S.jobs ?? []).filter((j) => j.status === "fail").length, alerts = S.alerts24?.newCause ?? 0;
+  const bits = [`${on} app${on === 1 ? "" : "s"} running`];
+  if (fail) bits.push(`${fail} job${fail === 1 ? "" : "s"} failing`);
+  if (alerts) bits.push(`${alerts} new alert${alerts === 1 ? "" : "s"}`);
+  if (!fail && !alerts) bits.push("nothing needs you");
+  return bits.join(" · ");
+});
+// Live = each card's own live window (2 h vitals, 7 d speed tests); the others are ranges the history store keeps.
+// Nothing is made up: with no history for a range yet, a card says "no data yet" for the part it lacks.
+const RANGE_PILL = [["Live", null], ["Day", "24H"], ["Week", "7D"], ["Month", "30D"]] as const;
+// remembered per browser, like the rest of the look ("live" = the Live choice). With nothing saved the glass desktop
+// opens on Week, the reel's view; the classic layout has no pill and keeps its live charts.
+const PICK_KEY = "sos.ovRange";
+const saved = (() => { try { const v = localStorage.getItem(PICK_KEY); return v === "live" ? null : v && RANGE_PILL.some(([, r]) => r === v) ? v : undefined; } catch { return undefined; } })();
+const pick = ref<string | null>(saved !== undefined ? saved : desk.value ? "7D" : null);
+watch(pick, (v) => { try { localStorage.setItem(PICK_KEY, v ?? "live"); } catch { /* not remembered */ } });
 
 // Time left in each usage window (5 h session, 7 d week), ticking so the thin bar under the meter keeps moving.
-const WINDOW: Record<string, number> = { session: 5 * 3600, week: 7 * 86400 };
 const nowS = ref(Date.now() / 1000);
 const tick = setInterval(() => (nowS.value = Date.now() / 1000), 1000);
 onUnmounted(() => clearInterval(tick));
-const timeLeft = (k: string, resetsAt: number | null | undefined) => {
+// hours: the window's length from the server (5 for the session, 168 for a week); unknown → countdown without the bar
+const timeLeft = (hours: number | null, resetsAt: number | null | undefined) => {
   if (!resetsAt) return null;
   const left = Math.max(0, resetsAt - nowS.value);
-  return { pct: Math.min(100, Math.round((1 - left / WINDOW[k]) * 100)), left };
+  return { pct: hours ? Math.min(100, Math.round((1 - left / (hours * 3600)) * 100)) : 0, left };
 };
 const leftLabel = (s: number) => {
   const t = Math.max(0, Math.floor(s)), d = Math.floor(t / 86400), h = Math.floor((t % 86400) / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
@@ -70,6 +99,20 @@ const metrics = computed(() => {
   ] as const;
 });
 const sel = ref<Key>("ram");
+// glass desktop (v3): the reel's row of four stat cards over one big chart; a card click puts its metric in the chart
+const STAT: { key: Key; icon: IconName; tone: "amber" | "green" | "blue" | "violet"; label: string; du: string; lower: boolean }[] = [
+  { key: "ram", icon: "memory-stick", tone: "amber", label: "Memory in use", du: " GB", lower: true },
+  { key: "cpu", icon: "thermometer", tone: "green", label: "CPU temp", du: " °C", lower: true },
+  { key: "disk", icon: "hard-drive", tone: "blue", label: "Disk used", du: " %", lower: true },
+  { key: "net", icon: "download", tone: "violet", label: "Download", du: "", lower: false },
+];
+const stats = computed(() => STAT.map((c) => ({ ...c, m: metrics.value.find((m) => m.key === c.key)! })));
+const chartKey = ref<Key>("ram");
+const chartM = computed(() => metrics.value.find((m) => m.key === chartKey.value) ?? metrics.value[0]);
+// the memory/CPU/swap badges are "change in the last few minutes": beside a week of bars that reads wrong, so the
+// big chart drops them once a range is picked (its own min/avg/max line covers the range); disk and speed keep theirs
+const chartBadge = computed(() => (pick.value && ["ram", "cpu", "swap"].includes(chartM.value.key) ? "" : chartM.value.badge));
+const warnFor =(m: { key: Key; level: string }) => (m.level === "g" ? "" : m.key === "disk" ? (m.level === "r" ? "over 90 %" : "over 80 %") : m.key === "net" ? "slow" : m.level === "r" ? "very high" : "high");
 const SYS_R = ["2H", "6H", "24H", "7D", "30D"], NET_R = ["7D", "30D", "90D", "24H"]; // first = live data
 const selM = computed(() => metrics.value.find((m) => m.key === sel.value) ?? metrics.value[0]);
 
@@ -82,7 +125,13 @@ const bots = computed(() => [...(S.botSessions ?? [])].sort((a, b) => Number(b.r
 
 <template>
   <main class="page">
-    <header class="ph">
+    <header v-if="desk" class="ph ov-greet">
+      <div class="ov-hello"><h1>{{ greeting }}</h1><p>Here's what's happening on your server · {{ subtitle }}</p></div>
+      <div class="ov-range" role="radiogroup" aria-label="Chart range">
+        <button v-for="[lab, r] in RANGE_PILL" :key="lab" type="button" role="radio" :aria-checked="pick === r" @click="pick = r">{{ lab }}</button>
+      </div>
+    </header>
+    <header v-else class="ph">
       <h1>Overview</h1>
       <span class="livechip"><span></span>{{ S.connected ? "Live" : "Reconnecting" }}</span>
     </header>
@@ -93,6 +142,22 @@ const bots = computed(() => [...(S.botSessions ?? [])].sort((a, b) => Number(b.r
 
     <UpdateCard />
 
+    <!-- glass desktop (v3): four stat cards, then the big chart with Needs attention beside it -->
+    <div v-if="desk" class="ov-g">
+      <section class="ov-stats" aria-label="Key metrics">
+        <StatCard v-for="c in stats" :key="c.key" :label="c.label" :value="c.m.value" :unit="c.m.unit" :level="c.m.level" :icon="c.icon" :tone="c.tone"
+          :t="[...c.m.t]" :v="[...c.m.v]" :metric="c.key" :ranges="c.key === 'net' ? NET_R : SYS_R" :pick="pick" :fmt="c.m.fmt" :delta-unit="c.du" :lower-is-better="c.lower"
+          :live-from="'vs ' + c.m.from" :active="chartKey === c.key" :warn="warnFor(c.m)" @select="chartKey = c.key" />
+      </section>
+      <HeroMetric :key="chartM.key" class="ov-chart" size="xl" :label="chartM.label" :value="chartM.value" :unit="chartM.unit" :badge="chartBadge" :level="chartM.level" :t="[...chartM.t]" :v="[...chartM.v]" :fmt="chartM.fmt" :from="chartM.from" :min-span="chartM.minSpan" :metric="chartM.key" :ranges="chartM.key === 'net' ? NET_R : SYS_R" bars :pick="pick">
+        <div class="ov-mx" role="tablist" aria-label="Chart metric" @pointermove.stop @pointerdown.stop>
+          <button v-for="m in metrics" :key="m.key" type="button" role="tab" :aria-selected="chartKey === m.key" @click="chartKey = m.key">{{ m.chip }}</button>
+        </div>
+      </HeroMetric>
+      <div class="card2 ov-alerts"><AlertStack start-open /></div>
+    </div>
+
+    <template v-else>
     <!-- phone: one hero + chip switcher + alert stack -->
     <section class="hero-mobile" aria-label="Key metric">
       <HeroMetric :key="selM.key" size="xl" :label="selM.label" :value="selM.value" :unit="selM.unit" :badge="selM.badge" :level="selM.level" :t="[...selM.t]" :v="[...selM.v]" :fmt="selM.fmt" :from="selM.from" :min-span="selM.minSpan" :metric="selM.key" :ranges="selM.key === 'net' ? NET_R : SYS_R" />
@@ -105,26 +170,27 @@ const bots = computed(() => [...(S.botSessions ?? [])].sort((a, b) => Number(b.r
     <!-- desktop: bento -->
     <div class="ov-top">
     <section class="bento" aria-label="Key metrics">
-      <HeroMetric v-for="(m, i) in metrics" :key="m.key" :class="'bx-' + m.key" :size="i === 0 ? 'xl' : 'md'" :label="m.label" :value="m.value" :unit="m.unit" :badge="m.badge" :level="m.level" :t="[...m.t]" :v="[...m.v]" :fmt="m.fmt" :from="m.from" :min-span="m.minSpan" :metric="m.key" :ranges="m.key === 'net' ? NET_R : SYS_R" />
+      <HeroMetric v-for="(m, i) in metrics" :key="m.key" :class="'bx-' + m.key" :size="i === 0 ? 'xl' : 'md'" :label="m.label" :value="m.value" :unit="m.unit" :badge="m.badge" :level="m.level" :t="[...m.t]" :v="[...m.v]" :fmt="m.fmt" :from="m.from" :min-span="m.minSpan" :metric="m.key" :ranges="m.key === 'net' ? NET_R : SYS_R" :bars="desk && i === 0" :pick="desk ? pick : undefined" />
     </section>
     <div class="card2 ov-alerts"><AlertStack start-open /></div>
     </div>
+    </template>
 
     <div class="cards">
       <section v-if="S.claudeUsage || S.claudeJobs?.length" class="card2 ai-card" aria-label="Claude usage">
         <div class="ch"><h3>Claude</h3><span class="muted">{{ S.claudeUsage?.plan ?? "" }}</span>
           <button type="button" class="btn sm ghost" :disabled="usageBusy" :title="S.claudeUsage ? `Read ${ago(S.claudeUsage.fetchedAt)}` : ''" aria-label="Refresh Claude usage" @click="refreshUsage">{{ usageBusy ? "Reading…" : S.claudeUsage ? `↻ ${ago(S.claudeUsage.fetchedAt)}` : "↻ Refresh" }}</button></div>
-        <template v-if="S.claudeUsage?.session || S.claudeUsage?.week">
-          <div v-for="[k, label] in ([['session', 'Session · 5 h'], ['week', 'Week']] as const)" :key="k" class="ai-meter">
-            <div class="ai-row"><span>{{ label }}</span><b class="num">{{ S.claudeUsage[k]?.pct ?? "–" }}%</b></div>
-            <div class="bar"><i :class="(S.claudeUsage[k]?.pct ?? 0) >= 90 ? 'b' : (S.claudeUsage[k]?.pct ?? 0) >= 70 ? 'w' : ''" :style="{ width: (S.claudeUsage[k]?.pct ?? 0) + '%', background: (S.claudeUsage[k]?.pct ?? 0) >= 70 ? undefined : 'var(--ink)' }"></i></div>
-            <template v-if="timeLeft(k, S.claudeUsage[k]?.resetsAt)">
-              <div class="bar thin" role="img" aria-hidden="true"><i :style="{ width: timeLeft(k, S.claudeUsage[k]?.resetsAt)!.pct + '%' }"></i></div>
-              <small class="muted">resets in <b class="num">{{ leftLabel(timeLeft(k, S.claudeUsage[k]?.resetsAt)!.left) }}</b></small>
-            </template>
-          </div>
-        </template>
-        <p v-if="S.claudeUsage?.error && (S.claudeUsage.session || S.claudeUsage.week)" class="hint">updated {{ ago(S.claudeUsage.fetchedAt) }} · {{ /429|rate/i.test(S.claudeUsage.error) ? "rate limited, retrying" : "last read failed, retrying" }}</p>
+        <!-- every window the API returns (5-hour, week, per-model, new ones), drawn in its order -->
+        <div v-for="w in usageWindows(S.claudeUsage)" :key="w.key" class="ai-meter">
+          <div class="ai-row"><span>{{ w.label }}</span><b class="num">{{ w.pct }}%</b></div>
+          <div class="bar"><i :class="w.pct >= 90 ? 'b' : w.pct >= 70 ? 'w' : ''" :style="{ width: w.pct + '%', background: w.pct >= 70 ? undefined : 'var(--ink)' }"></i></div>
+          <template v-if="timeLeft(w.hours, w.resetsAt)">
+            <div class="bar thin" role="img" aria-hidden="true"><i :style="{ width: timeLeft(w.hours, w.resetsAt)!.pct + '%' }"></i></div>
+            <small class="muted">resets in <b class="num">{{ leftLabel(timeLeft(w.hours, w.resetsAt)!.left) }}</b></small>
+          </template>
+        </div>
+        <p v-if="S.claudeUsage?.noSessionLimit" class="hint ai-nolimit">No 5-hour limit on this plan</p>
+        <p v-if="S.claudeUsage?.error && usageWindows(S.claudeUsage).length" class="hint">updated {{ ago(S.claudeUsage.fetchedAt) }} · {{ /429|rate/i.test(S.claudeUsage.error) ? "rate limited, retrying" : "last read failed, retrying" }}</p>
         <p v-else-if="S.claudeUsage?.error" class="hint">Usage unavailable: {{ S.claudeUsage.error }}</p>
         <div class="logsrc" style="margin-top: 10px">Running now</div>
         <div v-for="j in liveClaude" :key="j.pid" class="li">

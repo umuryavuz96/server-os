@@ -1,5 +1,5 @@
-import { test, expect } from "bun:test";
-import { expiredWatcher, rearmPrompt, REARM_GRACE_MS } from "./rearm";
+import { test, expect, describe } from "bun:test";
+import { expiredWatcher, rearmPrompt, REARM_GRACE_MS, liveWatchers, dropDeadWatchers } from "./rearm";
 import type { BgJob } from "./transcript";
 
 const job = (o: Partial<BgJob>): BgJob => ({ id: "j1", taskId: "t", kind: "monitor", name: "agmsg inbox stream", command: "/s/watch.sh sid /p claude-code",
@@ -52,4 +52,18 @@ test("from a real transcript: expiry notice → re-arm after the grace time, onc
   expect(expiredWatcher(t.jobs.values(), s, end + 30_000, new Set())).toBeNull(); // grace
   const j = expiredWatcher(t.jobs.values(), { ...s, lastActivity: end }, end + REARM_GRACE_MS + 1, new Set());
   expect(j?.command).toBe("/s/watch.sh sid /p claude-code");
+});
+
+describe("dead watchers", () => {
+  const w = (id: string, started: number, ended: number | null = null): BgJob => ({ id, taskId: null, kind: "monitor", name: "agmsg inbox stream", command: "watch.sh $CLAUDE_CODE_SESSION_ID", started, ended, endReason: null, events: 0, lastEvent: null, lastEventAt: null, timeoutMs: null, rearms: 0, request: null });
+  test("counts watch.sh per project folder, ignores grep", () => {
+    const m = liveWatchers('/bin/bash /x/watch.sh abc.1 "/Users/y/projects/server-dash" claude-code backend-1\n/bin/bash /x/watch.sh abc.2 /Users/y/projects/server-dash claude-code\ngrep watch.sh x y');
+    expect(m.get("-Users-y-projects-server-dash")).toBe(2);
+  });
+  test("only the newest N running watchers stay running", () => {
+    const r = dropDeadWatchers([w("a", 1), w("b", 2), w("c", 3)], 1);
+    expect(r.filter((j) => !j.ended).map((j) => j.id)).toEqual(["c"]);
+    expect(r.find((j) => j.id === "a")!.endReason).toBe("gone");
+    expect(dropDeadWatchers([w("a", 1)], 0)[0].ended).not.toBeNull();
+  });
 });

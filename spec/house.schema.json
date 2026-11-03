@@ -1,0 +1,700 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://serveros.dev/schema/house.json",
+  "title": "Server OS house model",
+  "description": "The House page's model: storeys of rectangular rooms in metres, Home Assistant areas mapped to rooms, and where each device pin sits. x runs across the width (0 = left wall seen from the street), y is depth from the front wall.",
+  "type": "object",
+  "required": [
+    "name",
+    "width",
+    "floors"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "len": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "rect": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "w",
+        "d"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/len"
+        },
+        "y": {
+          "$ref": "#/$defs/len"
+        },
+        "w": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100
+        },
+        "d": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,39}$"
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "mirror": {
+      "type": "boolean",
+      "default": false,
+      "description": "Draw the plan flipped left/right (the plans may come from a mirrored neighbour house). Coordinates stay as written."
+    },
+    "width": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 100
+    },
+    "storeyHeight": {
+      "type": "number",
+      "minimum": 1.8,
+      "maximum": 6,
+      "default": 2.6
+    },
+    "wall": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "outer": {
+          "type": "number",
+          "minimum": 0.02,
+          "maximum": 1
+        },
+        "inner": {
+          "type": "number",
+          "minimum": 0.02,
+          "maximum": 0.5
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 6,
+          "description": "Cutaway wall height in the dollhouse view."
+        }
+      }
+    },
+    "floors": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "level",
+          "depth",
+          "rooms"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "level": {
+            "type": "integer",
+            "minimum": -2,
+            "maximum": 6
+          },
+          "depth": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100
+          },
+          "shell": {
+            "$ref": "#/$defs/rect",
+            "description": "The outer walls' inside; default x 0, y 0, the house width and this floor's depth."
+          },
+          "rooms": {
+            "type": "array",
+            "maxItems": 40,
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "rects"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/id"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                "kind": {
+                  "enum": [
+                    "living",
+                    "kitchen",
+                    "bedroom",
+                    "bath",
+                    "toilet",
+                    "hall",
+                    "stairs",
+                    "storage",
+                    "utility",
+                    "office"
+                  ]
+                },
+                "floor": {
+                  "enum": ["oak", "oak_light", "laminate_grey", "tiles", "tiles_grey", "wet"],
+                  "description": "The floor finish, when not the room kind's usual one."
+                },
+                "rects": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 6,
+                  "items": {
+                    "$ref": "#/$defs/rect"
+                  }
+                },
+                "haArea": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "description": "Home Assistant area ids or names whose devices belong in this room."
+                }
+              }
+            }
+          },
+          "openTo": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/id"
+              }
+            },
+            "description": "Room pairs with no wall between them."
+          },
+          "openings": {
+            "type": "array",
+            "maxItems": 60,
+            "items": {
+              "type": "object",
+              "required": [
+                "at",
+                "along",
+                "w",
+                "kind"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "at": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "$ref": "#/$defs/len"
+                  },
+                  "description": "Centre of the opening, on a wall."
+                },
+                "along": {
+                  "enum": [
+                    "x",
+                    "y"
+                  ],
+                  "description": "The wall's direction."
+                },
+                "w": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 10
+                },
+                "kind": {
+                  "enum": [
+                    "door",
+                    "window",
+                    "opening"
+                  ]
+                },
+                "sill": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 4,
+                  "description": "Bottom of the opening above the floor (windows)."
+                },
+                "head": {
+                  "type": "number",
+                  "minimum": 0.3,
+                  "maximum": 5,
+                  "description": "Top of the opening above the floor."
+                },
+                "hinge": {
+                  "enum": ["-x", "+x", "-y", "+y"],
+                  "description": "Inside doors: the end of the opening the leaf hangs on. Left out: the renderer picks one."
+                },
+                "into": {
+                  "enum": ["-x", "+x", "-y", "+y"],
+                  "description": "Inside doors: the side the leaf opens to. Left out: the renderer picks one."
+                },
+                "closed": {
+                  "type": "boolean",
+                  "description": "Inside doors: draw the leaf shut. Otherwise it stands open flat against the wall beside its hinge, when there is one free."
+                },
+                "open": {
+                  "type": "boolean",
+                  "description": "Inside doors: stand the leaf open at 90 degrees into the room even with no wall beside the hinge to rest against."
+                },
+                "fixed": {
+                  "enum": ["-x", "+x", "-y", "+y"],
+                  "description": "Glazed garden doors: a fixed pane at that end, beside the two leaves (the opening is split in three)."
+                }
+              }
+            }
+          },
+          "fixtures": {
+            "type": "array",
+            "maxItems": 60,
+            "items": {
+              "type": "object",
+              "required": [
+                "kind",
+                "x",
+                "y",
+                "w",
+                "d"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "counter",
+                    "stairs",
+                    "shower",
+                    "toilet",
+                    "sink",
+                    "bath",
+                    "washer",
+                    "boiler",
+                    "bed",
+                    "sofa",
+                    "table",
+                    "box"
+                  ]
+                },
+                "x": {
+                  "$ref": "#/$defs/len"
+                },
+                "y": {
+                  "$ref": "#/$defs/len"
+                },
+                "w": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "d": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "h": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 6
+                },
+                "up": {
+                  "enum": [
+                    "+x",
+                    "-x",
+                    "+y",
+                    "-y"
+                  ],
+                  "description": "Stairs: the direction they climb."
+                }
+              }
+            }
+          },
+          "flatRoofs": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "$ref": "#/$defs/rect"
+            },
+            "description": "Flat roofs seen at this level (an extension below)."
+          },
+          "roof": {
+            "type": "object",
+            "required": [
+              "kind",
+              "ridge"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "gable"
+              },
+              "ridge": {
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 10,
+                "description": "Ridge height above this floor."
+              },
+              "from": {
+                "$ref": "#/$defs/len"
+              },
+              "to": {
+                "$ref": "#/$defs/len"
+              },
+              "eave": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 4,
+                "description": "Roof height above this floor at the outer wall face."
+              },
+              "skylights": {
+                "type": "array",
+                "maxItems": 8,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "x",
+                    "y",
+                    "w",
+                    "h"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "$ref": "#/$defs/len"
+                    },
+                    "y": {
+                      "$ref": "#/$defs/len"
+                    },
+                    "w": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 4
+                    },
+                    "h": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 4
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "voids": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "$ref": "#/$defs/rect"
+            },
+            "description": "Holes in this floor (the stairwell)."
+          },
+          "furniture": {
+            "type": "array",
+            "maxItems": 120,
+            "description": "Furniture and fittings: type, centre (x, y), size and rotation in degrees. rot 0 = back to the -y side, facing +y (the garden).",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "x",
+                "y"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "counter",
+                    "hob",
+                    "sink",
+                    "fridge",
+                    "dining-table",
+                    "chair",
+                    "sofa",
+                    "armchair",
+                    "coffee-table",
+                    "tv-unit",
+                    "rug",
+                    "plant",
+                    "floor-lamp",
+                    "coat-rack",
+                    "wc",
+                    "basin",
+                    "vanity",
+                    "shower",
+                    "bath",
+                    "bed",
+                    "cot",
+                    "wardrobe",
+                    "nightstand",
+                    "desk",
+                    "office-chair",
+                    "washer",
+                    "dryer",
+                    "boiler",
+                    "stairs",
+                    "railing",
+                    "box",
+                    "sofa-u",
+                    "bookshelf",
+                    "shelf-wall",
+                    "shelf-open",
+                    "cabinet",
+                    "air-purifier",
+                    "coffee-table-round",
+                    "side-table-round",
+                    "armchair-wing",
+                    "footstool",
+                    "rug-shag",
+                    "curtain",
+                    "pendant-capiz",
+                    "paint",
+                    "wall-tiles",
+                    "bed-box",
+                    "bed-day",
+                    "nightstand-white",
+                    "cot-sleeper",
+                    "baby-monitor",
+                    "trolley",
+                    "wardrobe-sliding",
+                    "wardrobe-panel",
+                    "mirror-wall",
+                    "dressing-table",
+                    "radiator-cover",
+                    "radiator",
+                    "towel-radiator",
+                    "roller-blind",
+                    "pendant-cylinder",
+                    "pendant-globe",
+                    "pendant-dome",
+                    "frames",
+                    "dresser-changing",
+                    "wall-shelf",
+                    "desk-work",
+                    "desk-white",
+                    "desk-lamp-arch",
+                    "office-chair-mesh",
+                    "guitar",
+                    "shower-black",
+                    "wc-wall",
+                    "bath-tiled",
+                    "vanity-white",
+                    "hamper",
+                    "display-tower",
+                    "buffet",
+                    "robot-dock",
+                    "kitchen-tall",
+                    "wall-cabinets",
+                    "hood",
+                    "track-spots",
+                    "chair-shell",
+                    "pendant-smoke",
+                    "gallery",
+                    "painting",
+                    "plant-stand"
+                  ]
+                },
+                "x": {
+                  "$ref": "#/$defs/len"
+                },
+                "y": {
+                  "$ref": "#/$defs/len"
+                },
+                "w": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20
+                },
+                "d": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20
+                },
+                "h": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 6
+                },
+                "rot": {
+                  "type": "number",
+                  "minimum": -360,
+                  "maximum": 360
+                },
+                "label": {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                "z": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 6,
+                  "description": "Wall pieces (paint, tiles, frames, blinds, radiators): the height of the bottom edge above the floor."
+                },
+                "color": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$",
+                  "description": "sRGB colour of the piece's main finish (paint, rugs, duvet, blinds, frames, curtains, lamp shades)."
+                },
+                "fronts": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Counters and the TV unit: how many doors or units across." },
+                "wine": { "enum": ["-x", "+x"], "description": "Counters: a 60 cm wine cooler at that end." },
+                "magnets": { "type": "boolean", "description": "Fridge: a door covered in souvenir magnets." },
+                "pendant": { "type": "boolean", "description": "Dining table: hang the default pendant over it (left out: yes)." },
+                "tv": { "type": "number", "minimum": 0, "maximum": 3, "description": "TV unit: the TV's bottom edge above the floor." },
+                "tvw": { "type": "number", "exclusiveMinimum": 0, "maximum": 3, "description": "TV unit: the TV's width." },
+                "tvAt": { "type": "number", "minimum": -3, "maximum": 3, "description": "TV unit: the TV's centre along the unit, from the unit's centre (local x)." },
+                "soundbar": { "type": "number", "minimum": 0, "maximum": 3, "description": "TV unit: the soundbar's length." },
+                "cubes": { "type": "integer", "minimum": 1, "maximum": 6, "description": "Display tower: how many stacked cubes." },
+                "shape": { "enum": ["round", "square"], "description": "Footstool: round or a soft rectangle." },
+                "flower": { "type": "boolean", "description": "Side table: an amaryllis in a pot on it." },
+                "shade": { "enum": ["drum", "box"], "description": "Floor lamp: a drum or a box shade." },
+                "slats": { "type": "boolean", "description": "Roller blind: a wooden venetian blind instead." },
+                "glass": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 20 }, "maxItems": 20, "description": "Wall cabinets: the doors (from 0) with glass panels." },
+                "doors": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Wall cabinets: how many doors across." },
+                "n": { "type": "integer", "minimum": 1, "maximum": 12, "description": "Track spots: how many spots." }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ignore": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "string",
+        "maxLength": 120
+      },
+      "description": "Entity id globs never offered as pins (e.g. sensor.volvo_*)."
+    },
+    "pins": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z_]+\\.[a-z0-9_]+$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "floor",
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "floor": {
+                "$ref": "#/$defs/id"
+              },
+              "x": {
+                "$ref": "#/$defs/len"
+              },
+              "y": {
+                "$ref": "#/$defs/len"
+              },
+              "z": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10,
+                "description": "Height above the storey's floor in metres (at most storeyHeight). Without it the pin stands 0.5 m up."
+              },
+              "entities": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 16,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z_]+\\.[a-z0-9_]+$"
+                },
+                "description": "A group pin: these HA entities switch together through this one pin (on when any is on). The pin's key is a name of our own, e.g. light.tv_unit_lights; the members get no pins of their own."
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 60,
+                "description": "A group pin's label."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "hidden"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "hidden": {
+                "const": true
+              }
+            }
+          }
+        ]
+      }
+    },
+    "facing": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 360,
+      "default": 180,
+      "description": "Compass bearing the street-side facade faces (0 = north). Drives the sun in the 3D view and the renders."
+    },
+    "site": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The plot around the house, for the 3D view and the renders.",
+      "properties": {
+        "front": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 30,
+          "description": "Front garden depth, m."
+        },
+        "back": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 60,
+          "description": "Back garden depth from the back wall, m."
+        },
+        "neighbours": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Terraced neighbours drawn on each side."
+        },
+        "shed": {
+          "$ref": "#/$defs/rect",
+          "description": "Garden shed, model coordinates (y from the front wall)."
+        }
+      }
+    }
+  }
+}

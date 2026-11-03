@@ -10,7 +10,7 @@ The goal: the owner opens one link, logs in, and uses the app. No setup wizard l
 0. **Keep the owner in the loop.** They watch a checklist live. First call `plan_steps` with the steps this app
    really needs (adjust the default list: drop what doesn't apply, add e.g. "Add the media folders"). Then, for
    each step, `check_step` it `doing` when you start and `done` with a short note when finished (`skipped` /
-   `failed` with the reason). Notes are one plain line: "admin umur created", "sign-ups closed". Never a password.
+   `failed` with the reason). Notes are one plain line: "admin alex created", "sign-ups closed". Never a password.
 1. **Look.**
    - `list_apps` / `app_logs`: is it running and healthy? Fix a crash first (bad env var, port, volume).
    - Read `../apps/<id>/compose.yaml`, `setup.md` (the recipe's notes, if any) and the app's own docs

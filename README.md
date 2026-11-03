@@ -128,9 +128,11 @@ Server OS does not try to be a pretty launcher for dozens of links. If that is a
 
 **The root agent.** `agent/` holds its `CLAUDE.md`, nine skills (add-app, add-job, add-webhook, clean-disk, diagnose, finish-app, remove-app, update-server, weekly-report) and a dependency-free **MCP server** that gives Claude the whole API as tools. A hook records every shell command and file edit it makes.
 
-**Bots.** Run Claude Code bots from the panel: create one (model, effort, permissions, optional Telegram), start it fresh or resume a past session, read its live feed and terminal, send messages, and change model or effort. Server OS runs each bot in its own tmux session; all it needs is `tmux` and the `claude` CLI.
+**Bots.** Run Claude Code bots from the panel: create one (model, effort, permissions, optional Telegram), start it fresh or resume a past session, read its live feed and terminal, send messages, change model or effort, and answer a bot's permission asks from the panel (Allow, Always allow, Deny) with the `agent/hooks/permission-relay.sh` PermissionRequest hook. Server OS runs each bot in its own tmux session; all it needs is `tmux` and the `claude` CLI.
 
 **Agent workspaces.** Each bot is its own agent: its own folder and identity, a scope (folders, network, optional sandbox), a tool policy (safe, dev or full plus your rules), its own skills, plugins and MCP servers, only the secrets you tick, and optionally its own Claude config. It is all written as Claude Code settings in the bot's folder. Bots message each other, and you, through [agmsg](https://github.com/fujibee/agmsg). See [Bot workspaces](docs/configuration.md#bot-workspaces).
+
+**Voice chat.** Talk to your voice assistant from the Voice page: a full chat (live, Stop, Retry, Copy, earlier conversations) whose answers show the web pages it used as source cards, plus cards, tables, charts and code. Hold the mic to talk, tap it for one sentence, or go hands-free; speech is transcribed on the server with whisper.cpp and the answer is spoken back. No microphone in this browser? Use your phone's mic with a QR code, or the desk speaker. See [Voice chat](docs/voice-chat.md).
 
 **Audit log.** Who did what: device, web panel, agent or webhook.
 
@@ -383,6 +385,7 @@ Native iPhone and iPad apps (SwiftUI) talk to the same API and pair with `server
 
 - [Configuration](docs/configuration.md)
 - [App recipes](docs/recipes.md)
+- [Voice chat](docs/voice-chat.md)
 - [OpenAPI spec](spec/openapi.yaml)
 - [Screenshots and clips](docs/assets/README.md)
 - [Changelog](CHANGELOG.md)

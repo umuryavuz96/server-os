@@ -4,17 +4,24 @@
 import type { Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { HOME, log, run } from "./lib";
-import { getState } from "./store";
+import { getState, setSlice } from "./store";
 import { config, dir } from "./core/config";
 import { audit } from "./core/logger";
 import { problem, type Env } from "./core/http";
 import { readAgentLog } from "./modules/bots/agentLog";
+import { botPane } from "./modules/bots/tmuxPane";
 import {
-  Transcript, latestTranscript, expiredWatcher, rearmPrompt, projectDir, readRequests, writeRequests, requestPrompt, requestStates, newRequestId, killJobProcess, DashSent, settleAfterInterrupt, clearIfStale,
-  type BgJob, type BotRequest, type FeedItem, type NativeBots,
+  Transcript, latestTranscript, expiredWatcher, liveWatchers, dropDeadWatchers, rearmPrompt, projectDir, readRequests, writeRequests, requestPrompt, requestStates, newRequestId, killJobProcess, DashSent, settleAfterInterrupt, clearIfStale,
+  Approvals, WAIT_MS, hookOutput, resolveChannel, summarize, trimInput, type BgJob, type BotRequest, type FeedItem, type NativeBots,
 } from "./modules/bots";
+
+// Permission asks from the bots' PermissionRequest hook, waiting for an answer from the panel (modules/bots/approvals.ts).
+const pingCmd = config.bots?.approvalPing;
+export const approvals = new Approvals(() => setSlice("botApprovals", approvals.counts()), (text) => {
+  if (pingCmd?.length) try { Bun.spawn([...pingCmd, text], { stdout: "ignore", stderr: "ignore" }); } catch { /* the panel still shows it */ }
+});
 
 interface BotInfo { channel: string; cwd: string; pid: number | null; running: boolean; protected: boolean; model: string }
 const bot = (ch: string) => ((getState().botSessions ?? []) as unknown as BotInfo[]).find((b) => b.channel === ch) ?? null;
@@ -77,9 +84,20 @@ function launchFlag(ch: string, flag: "model" | "effort") {
 }
 
 /** Background jobs for the panel: monitor re-arms collapse into their latest run; ended ones fade after 6 h. */
-function jobsView(t: Transcript): BgJob[] {
+const transcriptFolder = (b: BotInfo) => { const p = transcriptPath(b); return p ? basename(dirname(p)) : null; };
+let psCache: { at: number; w: Map<string, number> } | null = null;
+function watcherCounts() {
+  if (psCache && Date.now() - psCache.at < 5000) return psCache.w;
+  let out = "";
+  try { out = Bun.spawnSync(["ps", "-axo", "command="], { stdout: "pipe", stderr: "ignore" }).stdout.toString(); } catch { /* keep empty */ }
+  psCache = { at: Date.now(), w: liveWatchers(out) };
+  return psCache.w;
+}
+
+function jobsView(t: Transcript, folder: string | null): BgJob[] {
+  const alive = folder ? watcherCounts().get(folder) ?? 0 : null;
   const latest = new Map<string, BgJob>();
-  for (const j of t.jobs.values()) latest.set(`${j.kind}|${j.name}|${j.command}`, j);
+  for (const j of alive === null ? t.jobs.values() : dropDeadWatchers([...t.jobs.values()], alive)) latest.set(`${j.kind}|${j.name}|${j.command}`, j);
   const now = Date.now();
   return [...latest.values()].filter((j) => !j.ended || now - j.ended < 6 * 3600_000)
     .sort((a, b) => Number(!!a.ended) - Number(!!b.ended) || b.started - a.started).slice(0, 16);
@@ -92,9 +110,10 @@ function metaView(ch: string, b: BotInfo, t: Transcript | null) {
     session: t?.meta ?? null,
     effort: t?.meta.effort ?? efforts()[ch] ?? launchFlag(ch, "effort") ?? null,
     launchModel: launchFlag(ch, "model") ?? b.model,
-    jobs: t ? jobsView(t).map((j) => (stoppedHere.has(j.id) && j.ended ? { ...j, endReason: "stopped" } : j)) : [],
+    jobs: t ? jobsView(t, transcriptFolder(b)).map((j) => (stoppedHere.has(j.id) && j.ended ? { ...j, endReason: "stopped" } : j)) : [],
     schedules: t ? [...t.schedules.values()].filter((s) => !s.deleted).slice(-12) : [],
     requests: reqs.map((r, i) => ({ ...r, ...states[i] })),
+    approvals: approvals.pending(ch).map(({ suggestion, ...a }) => ({ ...a, canAlways: !!suggestion })),
     running: b.running, protected: b.protected, tmux: b.running && hasTmux(ch),
   };
 }
@@ -127,13 +146,15 @@ const stoppedHere = new Map<string, number>(); // job id → when it was switche
 
 const TMUX = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"].find(existsSync) ?? "tmux";
 /** The tmux session a bot runs in: bot-<channel>, except the main bot (channel "telegram"), which runs as bot-main. */
-const tmuxTarget = (ch: string) => `bot-${ch === "telegram" ? "main" : ch}`;
+const tmuxSession = (ch: string) => `bot-${ch === "telegram" ? "main" : ch}`;
+/** The bot's own pane in that session, never a split-off agent-team teammate's (see tmuxPane.ts). */
+const tmuxTarget = (ch: string) => botPane(TMUX, tmuxSession(ch));
 function hasTmux(ch: string) {
   if (nat(ch)) return native!.alive(ch);
-  try { return Bun.spawnSync([TMUX, "has-session", "-t", tmuxTarget(ch)]).exitCode === 0; } catch { return false; }
+  try { return Bun.spawnSync([TMUX, "has-session", "-t", `=${tmuxSession(ch)}`]).exitCode === 0; } catch { return false; }
 }
 
-export function botRoutes(api: Hono<Env>, cos: string | undefined, nativeBots: NativeBots | null = null) {
+export function botRoutes(api: Hono<Env>, cos: string | undefined, nativeBots: NativeBots | null = null, onServer: (c: Context<Env>) => boolean = () => false) {
   native = nativeBots;
   const send = async (ch: string, text: string) => {
     if (nat(ch)) return native!.send(ch, text); // only ever its own <prefix>* tmux sessions
@@ -340,6 +361,38 @@ export function botRoutes(api: Hono<Env>, cos: string | undefined, nativeBots: N
     const s = t?.schedules.get(c.req.param("id"));
     if (!s) return problem(c, 404, "Not Found", "Unknown schedule");
     return done(c, b.channel, "schedule.stop", await send(b.channel, `[Server OS] Please cancel the scheduled job ${s.cronId ?? ""} (${s.cron}) with CronDelete.`), "Asked the bot to cancel it");
+  });
+
+  // The hook (agent/hooks/permission-relay.sh, on this machine only) posts a Claude Code PermissionRequest and holds the
+  // request open: 200 + the decision JSON once the owner answers here, 204 when nobody did (or the ask can't be shown),
+  // so the hook prints nothing and Claude Code asks in the terminal as usual.
+  api.post("/approvals/hook", async (c) => {
+    if (!onServer(c)) return problem(c, 403, "Forbidden", "Only the hook on this machine may post here");
+    const j = await body(c) as { session_id?: string; cwd?: string; tool_name?: string; tool_input?: unknown; permission_suggestions?: unknown[] } | null;
+    if (!j?.tool_name) return problem(c, 400, "Bad Request", "Not a PermissionRequest");
+    const ch = resolveChannel((getState().botSessions ?? []) as unknown as BotInfo[], { sessionId: j.session_id, cwd: j.cwd, stateDir: c.req.header("x-state-dir") });
+    if (!ch) return c.body(null, 204);
+    const wait = Math.min(WAIT_MS * 6, Math.max(1, Number(c.req.header("x-wait") ?? 0)) * 1000 || WAIT_MS);
+    const input = (j.tool_input && typeof j.tool_input === "object" ? j.tool_input : {}) as Record<string, unknown>;
+    const sug = j.permission_suggestions?.[0];
+    const a = { id: newRequestId(), channel: ch, tool: String(j.tool_name).slice(0, 80), summary: summarize(String(j.tool_name), input), created: Date.now(), expires: Date.now() + wait,
+      cwd: String(j.cwd ?? ""), input: trimInput(input), suggestion: sug && typeof sug === "object" ? sug as Record<string, unknown> : null };
+    const gone = () => approvals.withdraw(a.id);
+    c.req.raw.signal.addEventListener("abort", gone); // the hook was killed: answered in the terminal, or its own timeout
+    const d = await approvals.add(a);
+    c.req.raw.signal.removeEventListener("abort", gone);
+    return d ? c.json(hookOutput(a, d)) : c.body(null, 204);
+  });
+  api.get("/bots/:ch/approvals", (c) => c.json(approvals.pending(c.req.param("ch")).map(({ suggestion, ...a }) => ({ ...a, canAlways: !!suggestion }))));
+  api.post("/bots/:ch/approvals/:id/decide", async (c) => {
+    const ch = c.req.param("ch"), j = await body(c), a = approvals.get(c.req.param("id"));
+    if (!a || a.channel !== ch) return problem(c, 404, "Not Found", "That ask is gone — it was answered in the terminal, or it expired");
+    const behavior = j?.behavior;
+    if (behavior !== "allow" && behavior !== "deny") return problem(c, 400, "Bad Request", "behavior must be allow or deny");
+    const msg = typeof j?.message === "string" ? j.message.slice(0, 500) : undefined;
+    approvals.decide(a.id, behavior === "allow" ? { behavior, always: j?.always === true } : { behavior, message: msg });
+    audit(c.get("actor"), `bot.approval.${behavior}${j?.always === true && behavior === "allow" ? ".always" : ""}`, `${ch} ${a.tool}`, "ok", c.get("trace"));
+    return c.json({ ok: true });
   });
 
   api.post("/bots/:ch/requests", async (c) => {

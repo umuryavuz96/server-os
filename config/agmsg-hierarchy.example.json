@@ -1,0 +1,15 @@
+{
+  "director": { "agent": "main", "name": "Director", "role": "Director", "cwd": "/Users/you" },
+  "teams": {
+    "checkout-redesign": {
+      "job": "Redesign the checkout flow",
+      "root": "web-dev-1",
+      "parent": { "designer-1": "web-dev-1", "backend-1": "web-dev-1", "qa-1": "web-dev-1" },
+      "role": { "web-dev-1": "Lead" },
+      "groups": { "web-dev-1": "Build" }
+    },
+    "mobile-apps": { "job": "Three small iOS apps", "flat": true },
+    "old-project": { "archived": true },
+    "bots": { "job": "Standing staff", "staff": true, "archived": ["one-off-probe"] }
+  }
+}
